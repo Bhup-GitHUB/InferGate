@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { chatCompletionRequestSchema, errorBody } from "@infergate/schemas";
 import { observeProviderError, observeRequest, startSpan } from "@infergate/otel";
-import type { ProviderRegistry } from "@infergate/providers";
+import type { ProviderAdapter, ProviderRegistry } from "@infergate/providers";
+import { RoutingEngine } from "@infergate/routing";
 import type { GatewayConfig } from "../../lib/config";
 import type { AppEnv, AuthContext } from "../../lib/env";
 import type { UsageStore } from "../../lib/store";
@@ -10,8 +11,40 @@ import { requireScope } from "../../middleware/auth";
 
 export interface ChatDeps {
   registry: ProviderRegistry;
+  routing: RoutingEngine;
   usage: UsageStore;
   config: GatewayConfig;
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error("aborted"));
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new Error("aborted"));
+    }, { once: true });
+  });
+}
+
+function withAttemptTimeout(parent: AbortSignal, ms: number): { signal: AbortSignal; cancel: () => void } {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  const onParent = () => {
+    clearTimeout(timer);
+    controller.abort();
+  };
+  parent.addEventListener("abort", onParent, { once: true });
+  return {
+    signal: controller.signal,
+    cancel: () => {
+      clearTimeout(timer);
+      parent.removeEventListener("abort", onParent);
+    },
+  };
 }
 
 export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
@@ -37,13 +70,11 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       return c.json(errorBody(parsed.error.issues[0]?.message ?? "Invalid request", "invalid_request_error", "validation_error"), 400);
     }
     const req = parsed.data;
-    const adapter = deps.registry.adapterFor(req.model);
-    if (!adapter) {
+    const resolved = deps.registry.resolveModel(req.model);
+    if (!resolved) {
       return c.json(errorBody(`Model not found: ${req.model}`, "invalid_request_error", "model_not_found"), 400);
     }
-    const resolved = deps.registry.resolveModel(req.model);
-    const modelId = resolved?.id ?? req.model;
-    span.setAttribute("provider", adapter.id);
+    const modelId = resolved.id;
     span.setAttribute("model", modelId);
 
     const idemScope = req.idempotency_key ? `${auth.orgId}:${req.idempotency_key}` : null;
@@ -56,6 +87,18 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         return c.json(errorBody("Duplicate request", "invalid_request_error", "idempotent_replay"), 409);
       }
       inflight.add(idemScope);
+    }
+
+    const rule = deps.routing.ruleFor(auth.orgId, req.model, modelId);
+    const routingAlias = req.model === "auto" ? "auto" : modelId;
+    const candidateIds = deps.routing.candidatesFor(routingAlias);
+    const ordered = deps.routing.orderCandidates(candidateIds, rule.strategy, rule).slice(0, Math.max(1, rule.maxAttempts));
+    if (ordered.length === 0) {
+      if (idemScope) {
+        inflight.delete(idemScope);
+      }
+      c.header("Retry-After", "5");
+      return c.json(errorBody("No healthy providers available", "provider_error", "no_healthy_providers"), 503);
     }
 
     const internal = {
@@ -72,49 +115,75 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       const onClientAbort = () => controller.abort();
       c.req.raw.signal.addEventListener("abort", onClientAbort, { once: true });
       const timeout = setTimeout(() => controller.abort(), deps.config.streamMaxDurationMs);
+      let attempts = 0;
+      let lastAttempted = ordered[0].providerId;
       try {
-        const result = await adapter.chatCompletion(internal, controller.signal);
-        const latencyMs = Date.now() - started;
-        await deps.usage.insert({
-          idempotencyKey: req.idempotency_key ?? null,
-          orgId: auth.orgId,
-          keyId: auth.keyId,
-          providerId: result.providerId,
-          model: modelId,
-          inputTokens: result.usage.inputTokens,
-          outputTokens: result.usage.outputTokens,
-          latencyMs,
-          costUsd: result.usage.costUsd,
-          status: "ok",
-          error: null,
-        });
-        observeRequest(result.providerId, modelId, latencyMs, result.usage.inputTokens, result.usage.outputTokens, result.usage.costUsd);
-        const completionId = `chatcmpl-${crypto.randomUUID().slice(0, 12)}`;
-        c.header("x-infergate-provider", result.providerId);
-        c.header("x-infergate-retry", "0");
-        return c.json({
-          id: completionId,
-          object: "chat.completion",
-          created: Math.floor(Date.now() / 1000),
-          model: modelId,
-          choices: [{ index: 0, message: { role: "assistant", content: result.text }, finish_reason: "stop" }],
-          usage: {
-            prompt_tokens: result.usage.inputTokens,
-            completion_tokens: result.usage.outputTokens,
-            total_tokens: result.usage.inputTokens + result.usage.outputTokens,
-          },
-        });
-      } catch (err) {
-        observeProviderError(adapter.id);
-        const message = err instanceof Error ? err.message : "provider_failure";
-        if (message === "aborted") {
-          return c.json(errorBody("Request timed out", "provider_error", "provider_timeout"), 504);
+        for (const cand of ordered) {
+          attempts += 1;
+          const adapter = deps.registry.get(cand.providerId);
+          if (!adapter) {
+            continue;
+          }
+          lastAttempted = adapter.id;
+          span.setAttribute("provider", adapter.id);
+          const attemptStarted = Date.now();
+          const attempt = withAttemptTimeout(controller.signal, deps.config.attemptTimeoutMs);
+          try {
+            const result = await adapter.chatCompletion(internal, attempt.signal);
+            const latencyMs = Date.now() - started;
+            deps.routing.reportSuccess(adapter.id, Date.now() - attemptStarted);
+            await deps.usage.insert({
+              idempotencyKey: req.idempotency_key ?? null,
+              orgId: auth.orgId,
+              keyId: auth.keyId,
+              providerId: result.providerId,
+              model: modelId,
+              inputTokens: result.usage.inputTokens,
+              outputTokens: result.usage.outputTokens,
+              latencyMs,
+              costUsd: result.usage.costUsd,
+              status: "ok",
+              error: null,
+            });
+            observeRequest(result.providerId, modelId, latencyMs, result.usage.inputTokens, result.usage.outputTokens, result.usage.costUsd);
+            const completionId = `chatcmpl-${crypto.randomUUID().slice(0, 12)}`;
+            c.header("x-infergate-provider", result.providerId);
+            c.header("x-infergate-retry", String(attempts - 1));
+            return c.json({
+              id: completionId,
+              object: "chat.completion",
+              created: Math.floor(Date.now() / 1000),
+              model: modelId,
+              choices: [{ index: 0, message: { role: "assistant", content: result.text }, finish_reason: "stop" }],
+              usage: {
+                prompt_tokens: result.usage.inputTokens,
+                completion_tokens: result.usage.outputTokens,
+                total_tokens: result.usage.inputTokens + result.usage.outputTokens,
+              },
+            });
+          } catch (err) {
+            attempt.cancel();
+            const message = err instanceof Error ? err.message : "provider_failure";
+            if (message === "aborted") {
+              throw err;
+            }
+            deps.routing.reportFailure(adapter.id);
+            observeProviderError(adapter.id);
+            if (attempts < ordered.length) {
+              await sleep(deps.routing.backoffFor(attempts - 1), controller.signal).catch(() => undefined);
+              if (controller.signal.aborted) {
+                throw new Error("aborted");
+              }
+            }
+            continue;
+          }
+          attempt.cancel();
         }
         await deps.usage.insert({
           idempotencyKey: req.idempotency_key ?? null,
           orgId: auth.orgId,
           keyId: auth.keyId,
-          providerId: adapter.id,
+          providerId: lastAttempted,
           model: modelId,
           inputTokens: 0,
           outputTokens: 0,
@@ -123,6 +192,12 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
           status: "error",
           error: "provider_unavailable",
         });
+        return c.json(errorBody("Provider unavailable", "provider_error", "provider_unavailable"), 502);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "provider_failure";
+        if (message === "aborted") {
+          return c.json(errorBody("Request timed out", "provider_error", "provider_timeout"), 504);
+        }
         return c.json(errorBody("Provider unavailable", "provider_error", "provider_unavailable"), 502);
       } finally {
         clearTimeout(timeout);
@@ -145,7 +220,9 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
     let accOutput = 0;
     let accCost = 0;
     let settled = false;
-
+    let winner = ordered[0].providerId;
+    let lastStreamAttempt = "unknown";
+    let retries = 0;
     let clientGone = false;
     const onStreamClientAbort = () => {
       clientGone = true;
@@ -153,14 +230,68 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
     };
     c.req.raw.signal.addEventListener("abort", onStreamClientAbort, { once: true });
 
-    c.header("x-infergate-provider", adapter.id);
-    c.header("x-infergate-retry", "0");
     return streamSSE(c, async (stream) => {
-      stream.onAbort(onStreamClientAbort);
+      const api = stream as unknown as { onAbort?: (fn: () => void) => void };
+      if (typeof api.onAbort === "function") {
+        api.onAbort(onStreamClientAbort);
+      }
+      let active: ProviderAdapter | null = null;
+      let iterator: AsyncGenerator<{ delta: string; done: boolean; usage?: { inputTokens: number; outputTokens: number; costUsd: number; latencyMs: number } }> | null = null;
+      let established = false;
       try {
-        const gen = adapter.streamCompletion(internal, streamController.signal);
+        for (let i = 0; i < ordered.length; i += 1) {
+          const cand = ordered[i];
+          const adapter = deps.registry.get(cand.providerId);
+          if (!adapter) {
+            continue;
+          }
+          lastStreamAttempt = adapter.id;
+          if (i > 0) {
+            await sleep(deps.routing.backoffFor(i - 1), streamController.signal).catch(() => undefined);
+            if (streamController.signal.aborted) {
+              throw new Error("aborted");
+            }
+          }
+          const gen = adapter.streamCompletion(internal, streamController.signal);
+          try {
+            const first = await gen.next();
+            if (first.done) {
+              deps.routing.reportFailure(adapter.id);
+              continue;
+            }
+            active = adapter;
+            winner = adapter.id;
+            retries = i;
+            span.setAttribute("provider", adapter.id);
+            iterator = (async function* () {
+              yield first.value;
+              yield* gen;
+            })();
+            established = true;
+            break;
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "provider_failure";
+            if (message === "aborted") {
+              throw err;
+            }
+            deps.routing.reportFailure(adapter.id);
+            observeProviderError(adapter.id);
+          }
+        }
+        if (!established || !iterator || !active) {
+          await stream.writeSSE({
+            data: JSON.stringify({ error: { message: "Provider unavailable", type: "provider_error" } }),
+          });
+          winner = lastStreamAttempt;
+          return;
+        }
+        await stream.writeSSE({
+          event: "infergate.route",
+          data: JSON.stringify({ provider: winner, retry: retries }),
+        });
+        const attemptStarted = Date.now();
         let interrupted = false;
-        for await (const chunk of gen) {
+        for await (const chunk of iterator) {
           if (stream.aborted || clientGone) {
             interrupted = true;
             break;
@@ -187,12 +318,18 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         if (!interrupted && !streamController.signal.aborted) {
           await stream.writeSSE({ data: "[DONE]" });
           settled = true;
+          if (active) {
+            deps.routing.reportSuccess(active.id, Date.now() - attemptStarted);
+          }
+        } else if (interrupted && !clientGone && active) {
+          deps.routing.reportFailure(active.id);
+          observeProviderError(active.id);
         }
       } catch {
-        observeProviderError(adapter.id);
+        observeProviderError(established ? winner : lastStreamAttempt);
         await stream.writeSSE({
           data: JSON.stringify({ error: { message: "Provider unavailable", type: "provider_error" } }),
-        });
+        }).catch(() => undefined);
       } finally {
         clearTimeout(idleTimer);
         clearTimeout(maxTimer);
@@ -203,10 +340,10 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         const latencyMs = Date.now() - startedAt;
         await deps.usage
           .insert({
-            idempotencyKey: null,
+            idempotencyKey: req.idempotency_key ?? null,
             orgId: auth.orgId,
             keyId: auth.keyId,
-            providerId: adapter.id,
+            providerId: established ? winner : lastStreamAttempt,
             model: modelId,
             inputTokens: accInput,
             outputTokens: accOutput,
@@ -216,7 +353,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             error: settled ? null : "stream_interrupted",
           })
           .catch(() => undefined);
-        observeRequest(adapter.id, modelId, latencyMs, accInput, accOutput, accCost);
+        observeRequest(winner, modelId, latencyMs, accInput, accOutput, accCost);
         span.end();
       }
     });
