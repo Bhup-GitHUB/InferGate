@@ -103,7 +103,7 @@ describe("gateway", () => {
     expect(second.status).toBe(409);
   });
 
-  test("key rotation issues successor and revokes old", async () => {
+  test("key rotation issues successor and keeps grace", async () => {
     const { app, publicKey, keyId } = await setup();
     const res = await app.request(`/v1/keys/${keyId}/rotate`, {
       method: "POST",
@@ -112,10 +112,60 @@ describe("gateway", () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.api_key.startsWith("ig_sk_")).toBe(true);
-    const retry = await app.request("/v1/models", { headers: { authorization: `Bearer ${publicKey}` } });
-    expect(retry.status).toBe(401);
+    expect(body.grace_ms).toBe(24 * 60 * 60 * 1000);
+    const grace = await app.request("/v1/models", { headers: { authorization: `Bearer ${publicKey}` } });
+    expect(grace.status).toBe(200);
     const next = await app.request("/v1/models", { headers: { authorization: `Bearer ${body.api_key}` } });
     expect(next.status).toBe(200);
+  });
+
+  test("revoked key is rejected", async () => {
+    const { app, publicKey, keyId, keys } = await setup();
+    await keys.revoke(keyId, Date.now());
+    const res = await app.request("/v1/models", { headers: { authorization: `Bearer ${publicKey}` } });
+    expect(res.status).toBe(401);
+  });
+
+  test("missing scope returns 403", async () => {
+    const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "1000" });
+    const g = generateKey("org_narrow", ["models:read"], PEPPER, 1);
+    await handles.keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...g.record });
+    const res = await handles.app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${g.publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  test("rate limit returns 429", async () => {
+    const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "2" });
+    const g = generateKey("org_rl", ["models:read"], PEPPER, 1);
+    await handles.keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...g.record });
+    const headers = { authorization: `Bearer ${g.publicKey}` };
+    expect((await handles.app.request("/v1/models", { headers })).status).toBe(200);
+    expect((await handles.app.request("/v1/models", { headers })).status).toBe(200);
+    const limited = await handles.app.request("/v1/models", { headers });
+    expect(limited.status).toBe(429);
+  });
+
+  test("idempotency keys are isolated per org", async () => {
+    const { app, publicKey, keys } = await setup();
+    const other = generateKey("org_other", ["chat:write"], PEPPER, 1);
+    await keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...other.record });
+    const payload = { model: "gpt-4o-mini", messages: [{ role: "user", content: "shared key" }], idempotency_key: "shared-1" };
+    const first = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    expect(first.status).toBe(200);
+    const cross = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${other.publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    expect(cross.status).toBe(200);
   });
 
   test("usage summary reflects traffic", async () => {
