@@ -18,7 +18,8 @@ export function billingRoutes(deps: BillingDeps): Hono<AppEnv> {
       return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
     }
     const auth = c.get("auth") as AuthContext;
-    const days = Math.min(Math.max(Number(c.req.query("days") ?? "7"), 1), 90);
+    const rawDays = Number(c.req.query("days") ?? "7");
+    const days = Math.min(Math.max(Number.isFinite(rawDays) ? Math.floor(rawDays) : 7, 1), 90);
     const now = Date.now();
     const rows = await deps.usage.recordsByOrg(auth.orgId, now - days * 86400000).catch(() => null);
     if (!rows) {
@@ -30,8 +31,7 @@ export function billingRoutes(deps: BillingDeps): Hono<AppEnv> {
   app.get("/billing/summary", async (c) => {
     if (!requireScope(c, "billing:read")) {
       return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
-    }
-    const auth = c.get("auth") as AuthContext;
+    }    const auth = c.get("auth") as AuthContext;
     const plan = deps.plans.get(auth.orgId);
     const caps = capsFor(plan);
     const { start, month } = monthWindow(Date.now());
@@ -54,6 +54,29 @@ export function billingRoutes(deps: BillingDeps): Hono<AppEnv> {
       quotaUsd: caps.monthlySpendUsd,
       invoice,
     });
+  });
+
+  app.post("/org/plan", async (c) => {
+    if (!requireScope(c, "keys:write")) {
+      return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
+    }
+    const auth = c.get("auth") as AuthContext;
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json(errorBody("Invalid JSON body", "invalid_request_error", "invalid_json"), 400);
+    }
+    const plan = (body as { plan?: unknown }).plan;
+    if (plan !== "free" && plan !== "pro" && plan !== "enterprise") {
+      return c.json(errorBody("Unknown plan", "invalid_request_error", "invalid_plan"), 400);
+    }
+    try {
+      deps.plans.set(auth.orgId, plan);
+    } catch {
+      return c.json(errorBody("Unknown plan", "invalid_request_error", "invalid_plan"), 400);
+    }
+    return c.json({ org_id: auth.orgId, plan });
   });
 
   return app;

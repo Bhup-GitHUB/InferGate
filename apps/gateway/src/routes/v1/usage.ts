@@ -24,7 +24,8 @@ export function usageRoutes(usage: UsageStore): Hono<AppEnv> {
       return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
     }
     const auth = c.get("auth") as AuthContext;
-    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? "25"), 1), 100);
+    const rawLimit = Number(c.req.query("limit") ?? "25");
+    const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 25, 1), 100);
     const rows = await usage.recent(auth.orgId, limit).catch(() => null);
     if (!rows) {
       return c.json(errorBody("Usage unavailable", "provider_error", "usage_unavailable"), 503);

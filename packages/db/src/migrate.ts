@@ -13,15 +13,19 @@ const files = (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort();
 const sql = postgres(connectionString, { max: 1 });
 
 await sql`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
+await sql`SELECT pg_advisory_lock(hashtext('infergate_migrate'))`;
 for (const file of files) {
   const done = await sql`SELECT 1 FROM schema_migrations WHERE name = ${file}`;
   if (done.length > 0) {
     continue;
   }
   const text = await Bun.file(join(dir, file)).text();
-  await sql.unsafe(text);
-  await sql`INSERT INTO schema_migrations (name) VALUES (${file})`;
+  await sql.begin(async (tx) => {
+    await tx.unsafe(text);
+    await tx`INSERT INTO schema_migrations (name) VALUES (${file})`;
+  });
   console.log(JSON.stringify({ migrated: file }));
 }
+await sql`SELECT pg_advisory_unlock(hashtext('infergate_migrate'))`;
 
 await sql.end();

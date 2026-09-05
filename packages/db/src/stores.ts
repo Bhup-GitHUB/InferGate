@@ -21,7 +21,14 @@ function toMs(value: Date | string | null): number | null {
   if (value === null || value === undefined) {
     return null;
   }
-  return new Date(value).getTime();
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
 }
 
 function keyFromRow(row: Record<string, unknown>): StoredKey {
@@ -46,6 +53,9 @@ export class PgKeyStore implements KeyStore {
   constructor(private sql: Sql) {}
 
   async findByPrefix(prefix: string): Promise<StoredKey | null> {
+    if (prefix.length > 64) {
+      return null;
+    }
     const rows = await this.sql`SELECT * FROM api_keys WHERE prefix = ${prefix} LIMIT 1`;
     if (rows.length === 0) {
       return null;
@@ -54,6 +64,9 @@ export class PgKeyStore implements KeyStore {
   }
 
   async findById(id: string): Promise<StoredKey | null> {
+    if (!isUuid(id)) {
+      return null;
+    }
     const rows = await this.sql`SELECT * FROM api_keys WHERE id = ${id} LIMIT 1`;
     if (rows.length === 0) {
       return null;
