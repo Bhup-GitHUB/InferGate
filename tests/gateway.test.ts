@@ -86,6 +86,20 @@ describe("gateway", () => {
     expect(text).toContain("chat.completion.chunk");
   });
 
+  test("auto resolves to serving provider model", async () => {
+    const { app, publicKey } = await setup();
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: "auto", messages: [{ role: "user", content: "which model" }] }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const provider = res.headers.get("x-infergate-provider") as string;
+    const expected = { openai: "gpt-4o-mini", anthropic: "claude-3-5-sonnet", "local-vllm": "llama-3-8b" }[provider];
+    expect(body.model).toBe(expected);
+  });
+
   test("cache_ttl returns HIT on repeat", async () => {
     const { app, publicKey } = await setup();
     const payload = { model: "gpt-4o-mini", messages: [{ role: "user", content: "cache me" }], cache_ttl: 60 };

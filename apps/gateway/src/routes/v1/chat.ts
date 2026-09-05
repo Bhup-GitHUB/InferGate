@@ -19,6 +19,12 @@ export interface ChatDeps {
   redis: Redis | null;
 }
 
+const AUTO_MODELS: Record<string, string> = {
+  openai: "gpt-4o-mini",
+  anthropic: "claude-3-5-sonnet",
+  "local-vllm": "llama-3-8b",
+};
+
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     if (signal.aborted) {
@@ -165,10 +171,11 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
           }
           lastAttempted = adapter.id;
           span.setAttribute("provider", adapter.id);
+          const effectiveModel = req.model === "auto" ? (AUTO_MODELS[adapter.id] ?? modelId) : modelId;
           const attemptStarted = Date.now();
           const attempt = withAttemptTimeout(controller.signal, deps.config.attemptTimeoutMs);
           try {
-            const result = await adapter.chatCompletion(internal, attempt.signal);
+            const result = await adapter.chatCompletion({ ...internal, model: effectiveModel }, attempt.signal);
             const latencyMs = Date.now() - started;
             deps.routing.reportSuccess(adapter.id, Date.now() - attemptStarted);
             await deps.usage.insert({
@@ -176,7 +183,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
               orgId: auth.orgId,
               keyId: auth.keyId,
               providerId: result.providerId,
-              model: modelId,
+              model: effectiveModel,
               inputTokens: result.usage.inputTokens,
               outputTokens: result.usage.outputTokens,
               latencyMs,
@@ -184,7 +191,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
               status: "ok",
               error: null,
             });
-            observeRequest(result.providerId, modelId, latencyMs, result.usage.inputTokens, result.usage.outputTokens, result.usage.costUsd);
+            observeRequest(result.providerId, effectiveModel, latencyMs, result.usage.inputTokens, result.usage.outputTokens, result.usage.costUsd);
             if (req.cache_ttl) {
               const entry: CachedCompletion = {
                 text: result.text,
@@ -192,9 +199,9 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
                 outputTokens: result.usage.outputTokens,
                 costUsd: result.usage.costUsd,
                 providerId: result.providerId,
-                modelId,
+                modelId: effectiveModel,
               };
-              await cacheSet(deps.redis, cacheKey(auth.orgId, modelId, req.messages, req.max_tokens, req.temperature), entry, req.cache_ttl);
+              await cacheSet(deps.redis, cacheKey(auth.orgId, effectiveModel, req.messages, req.max_tokens, req.temperature), entry, req.cache_ttl);
             }
             const completionId = `chatcmpl-${crypto.randomUUID().slice(0, 12)}`;
             c.header("x-infergate-provider", result.providerId);
@@ -203,7 +210,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
               id: completionId,
               object: "chat.completion",
               created: Math.floor(Date.now() / 1000),
-              model: modelId,
+              model: effectiveModel,
               choices: [{ index: 0, message: { role: "assistant", content: result.text }, finish_reason: "stop" }],
               usage: {
                 prompt_tokens: result.usage.inputTokens,
@@ -292,6 +299,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       let active: ProviderAdapter | null = null;
       let iterator: AsyncGenerator<{ delta: string; done: boolean; usage?: { inputTokens: number; outputTokens: number; costUsd: number; latencyMs: number } }> | null = null;
       let established = false;
+      let streamModel = modelId;
       try {
         for (let i = 0; i < ordered.length; i += 1) {
           const cand = ordered[i];
@@ -306,7 +314,11 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
               throw new Error("aborted");
             }
           }
-          const gen = adapter.streamCompletion(internal, streamController.signal);
+          const streamInternal = {
+            ...internal,
+            model: req.model === "auto" ? (AUTO_MODELS[adapter.id] ?? modelId) : modelId,
+          };
+          const gen = adapter.streamCompletion(streamInternal, streamController.signal);
           try {
             const first = await gen.next();
             if (first.done) {
@@ -316,7 +328,9 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             active = adapter;
             winner = adapter.id;
             retries = i;
+            streamModel = streamInternal.model;
             span.setAttribute("provider", adapter.id);
+            span.setAttribute("model", streamModel);
             iterator = (async function* () {
               yield first.value;
               yield* gen;
@@ -341,7 +355,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         }
         await stream.writeSSE({
           event: "infergate.route",
-          data: JSON.stringify({ provider: winner, retry: retries }),
+          data: JSON.stringify({ provider: winner, retry: retries, model: streamModel }),
         });
         const attemptStarted = Date.now();
         let interrupted = false;
@@ -363,7 +377,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
                 id: completionId,
                 object: "chat.completion.chunk",
                 created,
-                model: modelId,
+                model: streamModel,
                 choices: [{ index: 0, delta: { content: chunk.delta }, finish_reason: null }],
               }),
             });
@@ -412,7 +426,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             orgId: auth.orgId,
             keyId: auth.keyId,
             providerId: established ? winner : lastStreamAttempt,
-            model: modelId,
+            model: established ? streamModel : modelId,
             inputTokens: accInput,
             outputTokens: accOutput,
             latencyMs,
@@ -421,7 +435,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             error: settled ? null : budgetExceeded ? "quota_exceeded" : "stream_interrupted",
           })
           .catch(() => undefined);
-        observeRequest(winner, modelId, latencyMs, accInput, accOutput, accCost);
+        observeRequest(established ? winner : lastStreamAttempt, established ? streamModel : modelId, latencyMs, accInput, accOutput, accCost);
         span.end();
       }
     });
