@@ -1,5 +1,5 @@
 import type { Context, Next } from "hono";
-import { isKeyActive, parseKey, verifySecret, type StoredKey } from "@infergate/auth";
+import { isKeyActive, parseKey, verifyWithPepperRotation, type StoredKey } from "@infergate/auth";
 import { errorBody } from "@infergate/schemas";
 import type { AppEnv, AuthContext } from "../lib/env";
 import type { KeyStore } from "../lib/store";
@@ -27,7 +27,7 @@ export function authMiddleware(keys: KeyStore, peppers: Map<number, string>) {
       return c.json(errorBody("Invalid API key", "authentication_error", "invalid_api_key"), 401);
     }
     const pepper = peppers.get(stored.pepperVersion) ?? peppers.values().next().value;
-    if (!pepper || !verifySecret(parsed.secret, stored, pepper)) {
+    if (!pepper || !verifyWithPepperRotation(parsed.secret, stored, peppers)) {
       return c.json(errorBody("Invalid API key", "authentication_error", "invalid_api_key"), 401);
     }
     if (!isKeyActive(stored, Date.now())) {

@@ -6,7 +6,8 @@ import type { AppEnv } from "../lib/env";
 export function rateLimitMiddleware(limiter: RateLimiter, failOpen: boolean) {
   return async (c: Context<AppEnv>, next: Next) => {
     const auth = c.get("auth") as AppEnv["Variables"]["auth"] | undefined;
-    const bucket = `org:${auth?.orgId ?? "anon"}:${c.req.path}`;
+    const identity = auth?.keyId ?? c.req.header("x-forwarded-for") ?? "anon";
+    const bucket = `key:${identity}:${c.req.path}`;
     try {
       const decision = await limiter.check(bucket);
       c.header("X-RateLimit-Remaining", String(decision.remaining));
