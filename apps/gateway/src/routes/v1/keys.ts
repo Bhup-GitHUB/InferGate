@@ -33,7 +33,7 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
       rotatedFromId: existing.id,
     };
     await deps.keys.save(successor);
-    await deps.keys.revoke(existing.id, now);
+    await deps.keys.scheduleRevoke(existing.id, now + 24 * 60 * 60 * 1000);
     return c.json({
       id: successor.id,
       prefix: successor.prefix,

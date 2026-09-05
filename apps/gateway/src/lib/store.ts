@@ -21,11 +21,12 @@ export interface KeyStore {
   findById(id: string): Promise<StoredKey | null>;
   save(key: StoredKey): Promise<void>;
   revoke(id: string, now: number): Promise<void>;
+  scheduleRevoke(id: string, at: number): Promise<void>;
 }
 
 export interface UsageStore {
   insert(record: Omit<UsageRecord, "id" | "createdAt">): Promise<UsageRecord>;
-  findByIdempotencyKey(key: string): Promise<UsageRecord | null>;
+  findByIdempotencyKey(orgId: string, key: string): Promise<UsageRecord | null>;
   usageByOrg(orgId: string): Promise<{ requests: number; inputTokens: number; outputTokens: number; costUsd: number }>;
 }
 
@@ -52,6 +53,13 @@ export class MemoryKeyStore implements KeyStore {
       key.revokedAt = now;
     }
   }
+
+  async scheduleRevoke(id: string, at: number): Promise<void> {
+    const key = this.byId.get(id);
+    if (key) {
+      key.revokedAt = at;
+    }
+  }
 }
 
 export class MemoryUsageStore implements UsageStore {
@@ -63,8 +71,8 @@ export class MemoryUsageStore implements UsageStore {
     return row;
   }
 
-  async findByIdempotencyKey(key: string): Promise<UsageRecord | null> {
-    return this.records.find((r) => r.idempotencyKey === key) ?? null;
+  async findByIdempotencyKey(orgId: string, key: string): Promise<UsageRecord | null> {
+    return this.records.find((r) => r.orgId === orgId && r.idempotencyKey === key) ?? null;
   }
 
   async usageByOrg(orgId: string): Promise<{ requests: number; inputTokens: number; outputTokens: number; costUsd: number }> {
