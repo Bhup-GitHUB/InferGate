@@ -1,8 +1,9 @@
-const BASE = process.env["GATEWAY_URL"] ?? "http://localhost:3000";
-const KEY = process.env["GATEWAY_KEY"] ?? "";
+const BASE = process.env["GATEWAY_URL"] ?? "http://localhost:3000";const KEY = process.env["GATEWAY_KEY"] ?? "";
 const CONCURRENCY = Number(process.env["LOAD_CONCURRENCY"] ?? "50");
 const TOTAL = Number(process.env["LOAD_TOTAL"] ?? "500");
 const STREAM = process.env["LOAD_STREAM"] === "1";
+
+export {};
 
 if (!KEY) {
   console.error("GATEWAY_KEY is required");

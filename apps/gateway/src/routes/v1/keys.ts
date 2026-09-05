@@ -14,6 +14,41 @@ export interface KeyDeps {
 export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
+  app.post("/keys", async (c) => {
+    if (!requireScope(c, "keys:write")) {
+      return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
+    }
+    const auth = c.get("auth") as AuthContext;
+    let scopes: string[] = ["chat:write", "models:read", "usage:read"];
+    try {
+      const body = await c.req.json();
+      if (Array.isArray((body as { scopes?: unknown }).scopes)) {
+        const requested = (body as { scopes: unknown[] }).scopes.filter((s): s is string => typeof s === "string");
+        const allowed = new Set(["chat:write", "models:read", "usage:read", "billing:read", "keys:write"]);
+        scopes = [...new Set(requested.filter((s) => allowed.has(s)))];
+        if (scopes.length === 0) {
+          return c.json(errorBody("No valid scopes", "invalid_request_error", "invalid_scopes"), 400);
+        }
+      }
+    } catch {
+      return c.json(errorBody("Invalid JSON body", "invalid_request_error", "invalid_json"), 400);
+    }
+    const generated = generateKey(auth.orgId, scopes, deps.config.pepper, deps.config.pepperVersion);
+    const record: StoredKey = {
+      id: crypto.randomUUID(),
+      createdAt: Date.now(),
+      ...generated.record,
+    };
+    await deps.keys.save(record);
+    return c.json({
+      id: record.id,
+      prefix: record.prefix,
+      api_key: generated.publicKey,
+      scopes: record.scopes,
+      org_id: auth.orgId,
+    }, 201);
+  });
+
   app.post("/keys/:id/rotate", async (c) => {
     if (!requireScope(c, "keys:write")) {
       return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);

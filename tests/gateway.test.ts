@@ -130,6 +130,20 @@ describe("gateway", () => {
     expect(next.status).toBe(200);
   });
 
+  test("key creation returns one-time secret", async () => {
+    const { app, publicKey } = await setup();
+    const res = await app.request("/v1/keys", {
+      method: "POST",
+      headers: { authorization: `Bearer ${publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ scopes: ["models:read"] }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.api_key.startsWith("ig_sk_")).toBe(true);
+    const check = await app.request("/v1/models", { headers: { authorization: `Bearer ${body.api_key}` } });
+    expect(check.status).toBe(200);
+  });
+
   test("revoked key is rejected", async () => {
     const { app, publicKey, keyId, keys } = await setup();
     await keys.revoke(keyId, Date.now());
