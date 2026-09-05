@@ -33,7 +33,13 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
     } catch {
       return c.json(errorBody("Invalid JSON body", "invalid_request_error", "invalid_json"), 400);
     }
-    const generated = generateKey(auth.orgId, scopes, deps.config.pepper, deps.config.pepperVersion);
+    const callerScopes = new Set(auth.scopes);
+    const canGrant = (s: string): boolean => callerScopes.has("*") || callerScopes.has(s);
+    const granted = scopes.filter(canGrant);
+    if (granted.length === 0) {
+      return c.json(errorBody("No permitted scopes", "authorization_error", "forbidden_scopes"), 403);
+    }
+    const generated = generateKey(auth.orgId, granted, deps.config.pepper, deps.config.pepperVersion);
     const record: StoredKey = {
       id: crypto.randomUUID(),
       createdAt: Date.now(),

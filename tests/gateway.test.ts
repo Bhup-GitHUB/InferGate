@@ -144,6 +144,17 @@ describe("gateway", () => {
     expect(check.status).toBe(200);
   });
 
+  test("key creation cannot escalate scopes", async () => {
+    const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "1000" });
+    const g = generateKey("org_narrow", ["keys:write", "models:read"], PEPPER, 1);
+    await handles.keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...g.record });
+    const res = await handles.app.request("/v1/keys", {
+      method: "POST",
+      headers: { authorization: `Bearer ${g.publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ scopes: ["billing:read", "chat:write"] }),
+    });
+    expect(res.status).toBe(403);
+  });
   test("revoked key is rejected", async () => {
     const { app, publicKey, keyId, keys } = await setup();
     await keys.revoke(keyId, Date.now());
