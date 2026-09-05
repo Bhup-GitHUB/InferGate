@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { WebhookEventType } from "@infergate/webhooks";
+import { assertWebhookUrl } from "@infergate/providers";
 import { errorBody } from "@infergate/schemas";
 import type { AppEnv, AuthContext } from "../../lib/env";
 import { WebhookStore } from "../../lib/webhooks";import { requireScope } from "../../middleware/auth";
@@ -34,6 +35,12 @@ export function webhookRoutes(deps: WebhookDeps): Hono<AppEnv> {
     const parsed = webhookSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(errorBody("Invalid webhook", "invalid_request_error", "validation_error"), 400);
+    }
+    const allowPrivate = (process.env["NODE_ENV"] ?? "development") !== "production";
+    try {
+      assertWebhookUrl(parsed.data.url, allowPrivate);
+    } catch {
+      return c.json(errorBody("Webhook URL not allowed", "invalid_request_error", "url_denied"), 400);
     }
     const created = deps.store.add(auth.orgId, parsed.data.url, parsed.data.secret, parsed.data.events);
     return c.json({ id: created.id, url: created.url, events: created.events, supported: EVENTS }, 201);

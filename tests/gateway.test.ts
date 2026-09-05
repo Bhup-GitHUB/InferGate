@@ -242,6 +242,38 @@ describe("gateway", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("x-infergate-provider")).not.toBe("openai");
   });
+  test("webhook url ssrf is rejected", async () => {
+    const { app, publicKey } = await setup();
+    const headers = { authorization: `Bearer ${publicKey}`, "content-type": "application/json" };
+    for (const url of ["http://169.254.169.254/hook", "https://user:pw@example.com/hook", "http://example.com/hook"]) {
+      const res = await app.request("/v1/webhooks", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ url, secret: "0123456789abcdef", events: ["provider.outage"] }),
+      });
+      expect(res.status).toBe(400);
+    }
+    const prevEnv = process.env["NODE_ENV"];
+    process.env["NODE_ENV"] = "production";
+    const privateRes = await app.request("/v1/webhooks", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ url: "https://10.1.2.3/hook", secret: "0123456789abcdef", events: ["provider.outage"] }),
+    });
+    expect(privateRes.status).toBe(400);
+    if (prevEnv === undefined) {
+      delete process.env["NODE_ENV"];
+    } else {
+      process.env["NODE_ENV"] = prevEnv;
+    }
+    const local = await app.request("/v1/webhooks", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ url: "http://localhost:9000/hook", secret: "0123456789abcdef", events: ["provider.outage"] }),
+    });
+    expect(local.status).toBe(201);
+  });
+
   test("recent requests feed lists traffic", async () => {
     const { app, publicKey } = await setup();
     await app.request("/v1/chat/completions", {
