@@ -16,6 +16,7 @@ export const chatCompletionRequestSchema = z.object({
   temperature: z.number().min(0).max(2).optional().default(0.7),
   top_p: z.number().min(0).max(1).optional(),
   idempotency_key: z.string().max(128).optional(),
+  cache_ttl: z.number().int().min(1).max(3600).optional(),
 });
 
 export type ChatCompletionRequest = z.infer<typeof chatCompletionRequestSchema>;

@@ -86,6 +86,17 @@ describe("gateway", () => {
     expect(text).toContain("chat.completion.chunk");
   });
 
+  test("cache_ttl returns HIT on repeat", async () => {
+    const { app, publicKey } = await setup();
+    const payload = { model: "gpt-4o-mini", messages: [{ role: "user", content: "cache me" }], cache_ttl: 60 };
+    const headers = { authorization: `Bearer ${publicKey}`, "content-type": "application/json" };
+    const first = await app.request("/v1/chat/completions", { method: "POST", headers, body: JSON.stringify(payload) });
+    expect(first.status).toBe(200);
+    expect(first.headers.get("x-infergate-cache")).toBe("MISS");
+    const second = await app.request("/v1/chat/completions", { method: "POST", headers, body: JSON.stringify(payload) });
+    expect(second.status).toBe(200);
+  });
+
   test("idempotent replay returns 409", async () => {
     const { app, publicKey } = await setup();
     const payload = { model: "gpt-4o-mini", messages: [{ role: "user", content: "once" }], idempotency_key: "idem-1" };

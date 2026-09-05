@@ -4,6 +4,8 @@ import { chatCompletionRequestSchema, errorBody } from "@infergate/schemas";
 import { observeProviderError, observeRequest, startSpan } from "@infergate/otel";
 import type { ProviderAdapter, ProviderRegistry } from "@infergate/providers";
 import { RoutingEngine } from "@infergate/routing";
+import { cacheGet, cacheKey, cacheSet, type CachedCompletion } from "@infergate/cache";
+import type { Redis } from "ioredis";
 import type { GatewayConfig } from "../../lib/config";
 import type { AppEnv, AuthContext } from "../../lib/env";
 import type { UsageStore } from "../../lib/store";
@@ -14,6 +16,7 @@ export interface ChatDeps {
   routing: RoutingEngine;
   usage: UsageStore;
   config: GatewayConfig;
+  redis: Redis | null;
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -111,6 +114,42 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
 
     if (!req.stream) {
       const started = Date.now();
+      if (req.cache_ttl) {
+        const key = cacheKey(auth.orgId, modelId, req.messages, req.max_tokens, req.temperature);
+        const hit = await cacheGet(deps.redis, key);
+        if (hit) {
+          const latencyMs = Date.now() - started;
+          await deps.usage.insert({
+            idempotencyKey: req.idempotency_key ?? null,
+            orgId: auth.orgId,
+            keyId: auth.keyId,
+            providerId: hit.providerId,
+            model: modelId,
+            inputTokens: hit.inputTokens,
+            outputTokens: hit.outputTokens,
+            latencyMs,
+            costUsd: 0,
+            status: "ok",
+            error: null,
+          });
+          c.header("x-infergate-provider", hit.providerId);
+          c.header("x-infergate-retry", "0");
+          c.header("x-infergate-cache", "HIT");
+          return c.json({
+            id: `chatcmpl-${crypto.randomUUID().slice(0, 12)}`,
+            object: "chat.completion",
+            created: Math.floor(Date.now() / 1000),
+            model: modelId,
+            choices: [{ index: 0, message: { role: "assistant", content: hit.text }, finish_reason: "stop" }],
+            usage: {
+              prompt_tokens: hit.inputTokens,
+              completion_tokens: hit.outputTokens,
+              total_tokens: hit.inputTokens + hit.outputTokens,
+            },
+          });
+        }
+        c.header("x-infergate-cache", "MISS");
+      }
       const controller = new AbortController();
       const onClientAbort = () => controller.abort();
       c.req.raw.signal.addEventListener("abort", onClientAbort, { once: true });
@@ -146,6 +185,17 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
               error: null,
             });
             observeRequest(result.providerId, modelId, latencyMs, result.usage.inputTokens, result.usage.outputTokens, result.usage.costUsd);
+            if (req.cache_ttl) {
+              const entry: CachedCompletion = {
+                text: result.text,
+                inputTokens: result.usage.inputTokens,
+                outputTokens: result.usage.outputTokens,
+                costUsd: result.usage.costUsd,
+                providerId: result.providerId,
+                modelId,
+              };
+              await cacheSet(deps.redis, cacheKey(auth.orgId, modelId, req.messages, req.max_tokens, req.temperature), entry, req.cache_ttl);
+            }
             const completionId = `chatcmpl-${crypto.randomUUID().slice(0, 12)}`;
             c.header("x-infergate-provider", result.providerId);
             c.header("x-infergate-retry", String(attempts - 1));

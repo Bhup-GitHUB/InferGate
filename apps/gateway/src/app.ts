@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { createRateLimiter } from "@infergate/ratelimit";
+import { getRedis, RedisTokenBucket } from "@infergate/cache";
 import { renderPrometheus } from "@infergate/otel";
 import { createDefaultRegistry } from "@infergate/providers";
 import { RoutingEngine, type RoutingStrategy } from "@infergate/routing";
@@ -35,6 +36,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   const usage = new MemoryUsageStore();
   const plans = new OrgPlans();
   const registry = createDefaultRegistry();
+  const redisClient = getRedis(merged["REDIS_URL"]);
   const routing = new RoutingEngine({
     failureThreshold: config.breakerThreshold,
     cooldownMs: config.breakerCooldownMs,
@@ -49,10 +51,12 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   routing.registerProvider("openai", { costPer1k: 0.0015, aliases: ["gpt-4o-mini", "gpt-4o", "auto"] });
   routing.registerProvider("anthropic", { costPer1k: 0.0024, aliases: ["claude-3-5-sonnet", "claude-3-haiku", "auto"] });
   routing.registerProvider("local-vllm", { costPer1k: 0.0002, aliases: ["llama-3-8b", "mistral-7b", "auto"] });
-  const limiter = createRateLimiter(merged["REDIS_URL"], {
-    capacity: config.rateLimitPerMinute,
-    refillPerMinute: config.rateLimitPerMinute,
-  });
+  const limiter = redisClient
+    ? new RedisTokenBucket(redisClient, config.rateLimitPerMinute, config.rateLimitPerMinute, config.rateLimitFailOpen)
+    : createRateLimiter(undefined, {
+        capacity: config.rateLimitPerMinute,
+        refillPerMinute: config.rateLimitPerMinute,
+      });
   const peppers = new Map<number, string>([[config.pepperVersion, config.pepper]]);
 
   const app = new Hono<AppEnv>();
@@ -90,7 +94,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   guarded.use("*", authMiddleware(keys, peppers));
   guarded.use("*", rateLimitMiddleware(limiter, config.rateLimitFailOpen));
   guarded.use("*", quotaMiddleware({ usage, plans }));
-  guarded.route("/", chatRoutes({ registry, routing, usage, config }));
+  guarded.route("/", chatRoutes({ registry, routing, usage, config, redis: redisClient }));
   guarded.route("/", modelRoutes(registry));
   guarded.route("/", keyRoutes({ keys, config }));
   guarded.route("/", usageRoutes(usage));
