@@ -20,6 +20,8 @@ import { routingRoutes } from "./routes/v1/routing";
 import { billingRoutes } from "./routes/v1/billing";
 import { schedulerRoutes } from "./routes/v1/scheduler";
 import { quotaMiddleware } from "./middleware/quota";
+import { webhookRoutes } from "./routes/v1/webhooks";
+import { Notifier, WebhookStore } from "./lib/webhooks";
 import { OrgPlans } from "./lib/store";
 
 export interface AppHandles {
@@ -28,6 +30,8 @@ export interface AppHandles {
   usage: MemoryUsageStore;
   routing: RoutingEngine;
   plans: OrgPlans;
+  webhooks: WebhookStore;
+  notify: Notifier;
 }
 
 export function createApp(env: Record<string, string | undefined> = {}): AppHandles {
@@ -36,6 +40,8 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   const keys = new MemoryKeyStore();
   const usage = new MemoryUsageStore();
   const plans = new OrgPlans();
+  const webhooks = new WebhookStore();
+  const notify = new Notifier();
   const registry = createDefaultRegistry();
   const redisClient = getRedis(merged["REDIS_URL"]);
   if (!redisClient && (merged["NODE_ENV"] ?? "development") === "production") {
@@ -104,15 +110,16 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   const guarded = new Hono<AppEnv>();
   guarded.use("*", authMiddleware(keys, peppers));
   guarded.use("*", rateLimitMiddleware(limiter, config.rateLimitFailOpen));
-  guarded.use("*", quotaMiddleware({ usage, plans }));
-  guarded.route("/", chatRoutes({ registry, routing, usage, config, redis: redisClient }));
+  guarded.use("*", quotaMiddleware({ usage, plans, webhooks, notify }));
+  guarded.route("/", chatRoutes({ registry, routing, usage, config, redis: redisClient, webhooks, notify }));
   guarded.route("/", modelRoutes(registry));
   guarded.route("/", keyRoutes({ keys, config }));
   guarded.route("/", usageRoutes(usage));
   guarded.route("/", billingRoutes({ usage, plans }));
+  guarded.route("/", webhookRoutes({ store: webhooks }));
   guarded.route("/", schedulerRoutes());
   guarded.route("/", routingRoutes(routing, registry));
   app.route("/v1", guarded);
 
-  return { app, keys, usage, routing, plans };
+  return { app, keys, usage, routing, plans, webhooks, notify };
 }

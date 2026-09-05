@@ -2,10 +2,13 @@ import type { Context, Next } from "hono";
 import { capsFor, checkQuota, monthWindow } from "@infergate/billing";
 import type { AppEnv } from "../lib/env";
 import { OrgPlans, type UsageStore } from "../lib/store";
+import { Notifier, WebhookStore } from "../lib/webhooks";
 
 export interface QuotaDeps {
   usage: UsageStore;
   plans: OrgPlans;
+  webhooks: WebhookStore;
+  notify: Notifier;
 }
 
 const SPEND_PREFIXES = ["/v1/chat/"];
@@ -32,6 +35,11 @@ export function quotaMiddleware(deps: QuotaDeps) {
     }
     const verdict = checkQuota(plan, used.tokens, used.spendUsd, now);
     if (!verdict.allowed) {
+      deps.notify.emit(deps.webhooks, auth.orgId, "quota.exceeded", {
+        plan,
+        tokens: used.tokens,
+        spendUsd: used.spendUsd,
+      });
       return c.json(
         { error: { message: verdict.reason ?? "Quota exceeded", type: "quota_error", code: "quota_exceeded" } },
         402,
