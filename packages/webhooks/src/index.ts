@@ -14,6 +14,7 @@ export type WebhookEndpoint = {
   url: string;
   secret: string;
   events: WebhookEventType[];
+  orgId: string;
 };
 
 export function sign(payload: string, secret: string): string {
@@ -49,8 +50,8 @@ export function retryDelays(): number[] {
 export class WebhookQueue {
   private endpoints: WebhookEndpoint[] = [];
 
-  register(url: string, secret: string, events: WebhookEventType[]): WebhookEndpoint {
-    const endpoint: WebhookEndpoint = { url, secret, events: [...events] };
+  register(url: string, secret: string, events: WebhookEventType[], orgId = "*"): WebhookEndpoint {
+    const endpoint: WebhookEndpoint = { url, secret, events: [...events], orgId };
     this.endpoints.push(endpoint);
     return endpoint;
   }
@@ -59,7 +60,51 @@ export class WebhookQueue {
     return this.endpoints.filter((e) => e.events.includes(eventType));
   }
 
+  dueFor(orgId: string, eventType: WebhookEventType): WebhookEndpoint[] {
+    return this.endpoints.filter(
+      (e) => (e.orgId === orgId || e.orgId === "*") && e.events.includes(eventType),
+    );
+  }
+
   retryDelays(): number[] {
     return retryDelays();
   }
+}
+
+export type FetchImpl = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{ ok: boolean; status: number }>;
+
+export async function deliver(
+  fetchImpl: FetchImpl,
+  endpoint: WebhookEndpoint,
+  event: WebhookEvent,
+  timeoutMs = 5000,
+  delays: number[] = retryDelays(),
+): Promise<boolean> {
+  const payload = JSON.stringify(event);
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetchImpl(endpoint.url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-infergate-event": event.type,
+          "x-infergate-signature": sign(payload, endpoint.secret),
+        },
+        body: payload,
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        return true;
+      }
+    } catch {
+      clearTimeout(timer);
+    }
+    if (attempt < delays.length) {
+      await new Promise((r) => setTimeout(r, delays[attempt]));
+    }
+  }
+  return false;
 }
