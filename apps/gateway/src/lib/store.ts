@@ -30,6 +30,7 @@ export interface UsageStore {
   usageByOrg(orgId: string): Promise<{ requests: number; inputTokens: number; outputTokens: number; costUsd: number }>;
   recordsByOrg(orgId: string, sinceMs: number): Promise<UsageRecord[]>;
   periodUsage(orgId: string, sinceMs: number): Promise<{ tokens: number; spendUsd: number }>;
+  recent(orgId: string, limit: number): Promise<UsageRecord[]>;
 }
 
 export class OrgPlans {
@@ -115,5 +116,12 @@ export class MemoryUsageStore implements UsageStore {
       tokens: rows.reduce((n, r) => n + r.inputTokens + r.outputTokens, 0),
       spendUsd: rows.reduce((n, r) => n + r.costUsd, 0),
     };
+  }
+
+  async recent(orgId: string, limit: number): Promise<UsageRecord[]> {
+    return this.records
+      .filter((r) => r.orgId === orgId)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, Math.min(Math.max(limit, 1), 100));
   }
 }

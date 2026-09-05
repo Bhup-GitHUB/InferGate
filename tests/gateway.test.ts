@@ -242,6 +242,20 @@ describe("gateway", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("x-infergate-provider")).not.toBe("openai");
   });
+  test("recent requests feed lists traffic", async () => {
+    const { app, publicKey } = await setup();
+    await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "feed me" }] }),
+    });
+    const res = await app.request("/v1/requests?limit=10", { headers: { authorization: `Bearer ${publicKey}` } });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].model).toBe("gpt-4o-mini");
+  });
+
   test("usage summary reflects traffic", async () => {
     const { app, publicKey } = await setup();
     await app.request("/v1/chat/completions", {
