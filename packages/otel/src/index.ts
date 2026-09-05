@@ -41,7 +41,7 @@ export function startSpan(_name: string): Span {
 }
 
 export function observeRequest(provider: string, model: string, latencyMs: number, inputTokens: number, outputTokens: number, costUsd: number): void {
-  const rk = `${provider}:${model}`;
+  const rk = `${provider}|||${model}`;
   metrics.requestsTotal.set(rk, (metrics.requestsTotal.get(rk) ?? 0) + 1);
   metrics.tokensTotal.set(rk, (metrics.tokensTotal.get(rk) ?? 0) + inputTokens + outputTokens);
   metrics.costTotal.set(rk, (metrics.costTotal.get(rk) ?? 0) + costUsd);
@@ -55,24 +55,28 @@ export function observeProviderError(provider: string): void {
   metrics.providerErrors.set(provider, (metrics.providerErrors.get(provider) ?? 0) + 1);
 }
 
+function esc(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 export function renderPrometheus(): string {
   const lines: string[] = [];
   lines.push("# HELP infergate_requests_total Total gateway requests");
   lines.push("# TYPE infergate_requests_total counter");
   for (const [k, v] of metrics.requestsTotal) {
-    const [provider, model] = k.split(":");
-    lines.push(`infergate_requests_total{provider="${provider}",model="${model}"} ${v}`);
+    const [provider, model] = k.split("|||");
+    lines.push(`infergate_requests_total{provider="${esc(provider)}",model="${esc(model)}"} ${v}`);
   }
   lines.push("# HELP infergate_tokens_total Total tokens");
   lines.push("# TYPE infergate_tokens_total counter");
   for (const [k, v] of metrics.tokensTotal) {
-    const [provider, model] = k.split(":");
-    lines.push(`infergate_tokens_total{provider="${provider}",model="${model}"} ${v}`);
+    const [provider, model] = k.split("|||");
+    lines.push(`infergate_tokens_total{provider="${esc(provider)}",model="${esc(model)}"} ${v}`);
   }
   lines.push("# HELP infergate_provider_errors_total Provider errors");
   lines.push("# TYPE infergate_provider_errors_total counter");
   for (const [k, v] of metrics.providerErrors) {
-    lines.push(`infergate_provider_errors_total{provider="${k}"} ${v}`);
+    lines.push(`infergate_provider_errors_total{provider="${esc(k)}"} ${v}`);
   }
   return lines.join("\n") + "\n";
 }

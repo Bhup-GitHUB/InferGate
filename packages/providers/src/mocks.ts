@@ -24,6 +24,24 @@ function randomLatency(min: number, max: number): number {
   return min + Math.random() * (max - min);
 }
 
+function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error("aborted"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error("aborted"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 function splitChunks(text: string, parts: number): string[] {
   const words = text.split(" ");
   const out: string[] = [];
@@ -46,17 +64,7 @@ export function createMockProvider(behavior: MockBehavior): ProviderAdapter {
         throw new Error(`${behavior.id} simulated upstream failure`);
       }
       const delay = randomLatency(behavior.latencyMinMs, behavior.latencyMaxMs);
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(resolve, delay);
-        signal.addEventListener(
-          "abort",
-          () => {
-            clearTimeout(timer);
-            reject(new Error("aborted"));
-          },
-          { once: true },
-        );
-      });
+      await abortableDelay(delay, signal);
       const lastUser = [...req.messages].reverse().find((m) => m.role === "user");
       const prompt = lastUser ? lastUser.content : "";
       const text = `Mock response from ${behavior.id} for model ${req.model}: received ${req.messages.length} message(s). Last prompt length ${prompt.length} chars.`;
@@ -84,7 +92,7 @@ export function createMockProvider(behavior: MockBehavior): ProviderAdapter {
         if (signal.aborted) {
           throw new Error("aborted");
         }
-        await new Promise((r) => setTimeout(r, randomLatency(behavior.latencyMinMs / 6, behavior.latencyMaxMs / 6)));
+        await abortableDelay(randomLatency(behavior.latencyMinMs / 6, behavior.latencyMaxMs / 6), signal);
         yield { delta: part + " ", done: false };
       }
       const inputTokens = req.messages.reduce((n, m) => n + countTokens(m.content), 0);

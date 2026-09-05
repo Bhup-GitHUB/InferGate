@@ -57,11 +57,6 @@ export class ProviderRegistry {
     if (direct && direct.supportsModel(alias)) {
       return direct;
     }
-    for (const adapter of this.adapters.values()) {
-      if (adapter.supportsModel(alias)) {
-        return adapter;
-      }
-    }
     return undefined;
   }
 }

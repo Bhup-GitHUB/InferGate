@@ -35,7 +35,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
 
   const app = new Hono<AppEnv>();
   app.use("*", tracingMiddleware());
-  app.use("*", cors());
+  app.use("*", cors({ origin: config.allowedOrigins }));
   app.use("/v1/*", bodyLimit({ maxSize: config.bodyLimitBytes }));
 
   app.get("/healthz", (c) => c.json({ ok: true }));
