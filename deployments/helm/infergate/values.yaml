@@ -1,0 +1,28 @@
+replicaCount: 3
+image:
+  repository: infergate/gateway
+  tag: 0.1.0
+  pullPolicy: IfNotPresent
+service:
+  type: ClusterIP
+  port: 3000
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 70
+env:
+  rateLimitPerMinute: "120"
+  rateLimitFailOpen: "false"
+  defaultStrategy: availability
+  breakerThreshold: "5"
+  breakerCooldownMs: "30000"
+  allowedOrigins: https://app.infergate.ai
+secrets:
+  apiKeyPepper: CHANGEME
+  databaseUrl: CHANGEME
+  redisUrl: ""
+postgresql:
+  enabled: true
+redis:
+  enabled: true
