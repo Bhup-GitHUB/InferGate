@@ -107,8 +107,7 @@ export async function revokeKey(key: string, id: string): Promise<void> {
   }
 }
 
-export async function fetchRecent(key: string, limit: number): Promise<{
-  data: { id: string; model: string; provider: string | null; input_tokens: number; output_tokens: number; latency_ms: number; cost_usd: number; status: string; created_at: string }[];
+export async function fetchRecent(key: string, limit: number): Promise<{  data: { id: string; model: string; provider: string | null; input_tokens: number; output_tokens: number; latency_ms: number; cost_usd: number; status: string; created_at: string }[];
 }> {
   const res = await authed(`/v1/requests?limit=${limit}`, key);
   if (!res.ok) {
@@ -205,4 +204,20 @@ export async function streamChat(
       }
     }
   }
+}
+
+export async function setPlan(key: string, plan: string): Promise<{ plan: string }> {
+  const res = await authed("/v1/org/plan", key, { method: "POST", body: JSON.stringify({ plan }) });
+  if (!res.ok) {
+    throw new Error(`plan ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchDeliveries(key: string): Promise<{ data: { at: string; type: string; url: string; ok: boolean }[] }> {
+  const res = await authed("/v1/webhooks/deliveries", key);
+  if (!res.ok) {
+    throw new Error(`deliveries ${res.status}`);
+  }
+  return res.json();
 }

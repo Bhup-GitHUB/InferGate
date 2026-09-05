@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { KeyGate } from "../../components/KeyGate";
-import { fetchBilling, getKey } from "../../lib/api";
+import { fetchBilling, getKey, setPlan } from "../../lib/api";
 
 interface Summary {
   plan: string;
@@ -18,6 +18,7 @@ export default function Billing(): React.ReactElement {
   const [ready, setReady] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState("");
+  const [planTick, setPlanTick] = useState(0);
 
   useEffect(() => {
     if (getKey() !== "") {
@@ -31,7 +32,7 @@ export default function Billing(): React.ReactElement {
         .then(setSummary)
         .catch(() => setError("Billing needs billing:read scope on this key."));
     }
-  }, [ready]);
+  }, [ready, planTick]);
 
   if (!ready) {
     return <KeyGate onReady={() => setReady(true)} />;
@@ -54,6 +55,28 @@ export default function Billing(): React.ReactElement {
           <p className="mb-8 mt-1.5 text-sm text-fog">
             {summary.period} · {summary.plan} plan · invoice {summary.invoice.status}
           </p>
+          <div className="mb-4 flex gap-2">
+            {["free", "pro", "enterprise"].map((p) => (
+              <button
+                key={p}
+                className={
+                  summary.plan === p
+                    ? "rounded-xl border border-acid bg-acid px-4 py-2 text-sm font-bold text-black"
+                    : "rounded-xl border border-edge bg-panel2 px-4 py-2 text-sm font-semibold transition hover:-translate-y-px"
+                }
+                onClick={async () => {
+                  try {
+                    await setPlan(getKey(), p);
+                    setPlanTick((t) => t + 1);
+                  } catch {
+                    setError("Plan change needs keys:write scope.");
+                  }
+                }}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
           <div className="grid gap-4 xl:grid-cols-2">
             <div className="rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
               <div className="mb-2.5 text-xs uppercase tracking-[0.12em] text-fog">

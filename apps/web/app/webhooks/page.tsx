@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { KeyGate } from "../../components/KeyGate";
-import { addWebhook, getKey, listWebhooks, removeWebhook } from "../../lib/api";
+import { addWebhook, fetchDeliveries, getKey, listWebhooks, removeWebhook } from "../../lib/api";
 
 interface Row {
   id: string;
@@ -15,6 +15,7 @@ const ALL = ["quota.warning", "quota.exceeded", "provider.outage"];
 export default function Webhooks(): React.ReactElement {
   const [ready, setReady] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
+  const [deliveries, setDeliveries] = useState<{ at: string; type: string; url: string; ok: boolean }[]>([]);
   const [url, setUrl] = useState("");
   const [secret, setSecret] = useState("");
   const [error, setError] = useState("");
@@ -23,6 +24,8 @@ export default function Webhooks(): React.ReactElement {
     try {
       const r = await listWebhooks(getKey());
       setRows(r.data);
+      const d = await fetchDeliveries(getKey());
+      setDeliveries(d.data);
     } catch {
       setError("Listing needs keys:write scope.");
     }
@@ -102,6 +105,26 @@ export default function Webhooks(): React.ReactElement {
           </div>
         ))}
         {rows.length === 0 && <p className="text-sm text-fog">No endpoints yet.</p>}
+      </div>
+      <div className="mt-4 rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
+        <div className="mb-2 text-xs uppercase tracking-[0.12em] text-fog">Recent deliveries</div>
+        {deliveries.map((d, i) => (
+          <div key={i} className="flex items-center justify-between border-t border-edge py-2.5 text-sm first:border-t-0">
+            <span className="font-mono text-xs">
+              {d.at.slice(11, 19)} · {d.type}
+            </span>
+            <span
+              className={
+                d.ok
+                  ? "inline-flex items-center gap-1.5 rounded-full border border-edge px-3 py-1 text-xs font-semibold text-acid"
+                  : "inline-flex items-center gap-1.5 rounded-full border border-edge px-3 py-1 text-xs font-semibold text-red-400"
+              }
+            >
+              {d.ok ? "delivered" : "failed"}
+            </span>
+          </div>
+        ))}
+        {deliveries.length === 0 && <p className="text-sm text-fog">No deliveries yet.</p>}
       </div>
     </div>
   );
