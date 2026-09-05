@@ -58,10 +58,18 @@ describe("egress", () => {
   test("allows listed hosts and blocks metadata", () => {
     expect(() => assertEgressAllowed("https://api.openai.com/v1", policy)).not.toThrow();
     expect(() => assertEgressAllowed("https://api.anthropic.com/v1", policy)).not.toThrow();
+    expect(() => assertEgressAllowed("https://deep.api.anthropic.com/v1", policy)).not.toThrow();
     expect(() => assertEgressAllowed("http://169.254.169.254/latest", { allowlist: ["169.254.169.254"], allowLoopback: true })).toThrow();
     expect(() => assertEgressAllowed("http://localhost:8000/x", policy)).toThrow();
     expect(() => assertEgressAllowed("https://evil.com/x", policy)).toThrow();
     expect(() => assertEgressAllowed("http://api.openai.com/v1", policy)).toThrow();
+    expect(() => assertEgressAllowed("https://2130706433/x", { allowlist: ["2130706433"], allowLoopback: false })).toThrow();
+    expect(() => assertEgressAllowed("https://0x7f.0.0.1/x", { allowlist: ["0x7f.0.0.1"], allowLoopback: false })).toThrow();
+    expect(() => assertEgressAllowed("https://10.0.0.5/x", { allowlist: ["10.0.0.5"], allowLoopback: false })).toThrow();
+    expect(() => assertEgressAllowed("https://[::1]/x", { allowlist: ["[::1]"], allowLoopback: false })).toThrow();
+    expect(() => assertEgressAllowed("https://user:pass@api.openai.com/x", policy)).toThrow();
+    expect(() => assertEgressAllowed("https://api.openai.com:8443/x", policy)).toThrow();
+    expect(() => assertEgressAllowed("https://api.openai.com./x", policy)).not.toThrow();
   });
 });
 

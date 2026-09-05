@@ -3,7 +3,7 @@ import { anthropicMock, localVllmMock, openaiMock } from "./mocks";
 
 export * from "./types";
 export { anthropicMock, localVllmMock, openaiMock } from "./mocks";
-export { assertEgressAllowed, type EgressPolicy } from "./egress";
+export { assertEgressAllowed, assertWebhookUrl, type EgressPolicy } from "./egress";
 
 export interface ModelEntry {
   id: string;
