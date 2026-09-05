@@ -1,0 +1,26 @@
+# Final Review — InferGate (1M users / 10M req/day / enterprise / multi-region)
+
+**Overall: NO-GO for production scale.** Correct single-node demo; stateful in-memory core, TOCTOU billing, and no multi-region story. Survives ~100 RPS single pod, not 115 avg / 1k+ peak RPS multi-pod.
+
+## Verdicts
+- **Auth: CONDITIONAL.** HMAC+pepper+constant-time good (`packages/auth/src/index.ts:43,89`), scope check on all routes. But single-pepper map, enumerable 6-char prefix, no shared revocation.
+- **Routing: NO-GO.** Per-pod EWMA/breaker diverges; no shared health; thundering herd on recovery.
+- **Billing: NO-GO.** No atomic reservation; inconsistent counting; cache-hit `$0`; unbounded memory store.
+- **Realtime: MARGINAL.** SSE works, idle+max timers present. But usage=$0 when provider omits usage chunk; 5-min kill bills error; spend cap unenforced mid-stream.
+- **Security: MARGINAL.** Zod+bodyLimit+scopes good. SSRF via webhooks, spoofable anon RL, open `/metrics`, `localStorage` key.
+- **Scale: NO-GO.** Every hot store is process-local. Adding pods *reduces* correctness (quota/idempotency/revocation bypass).
+
+## Top 10 issues (risk order)
+1. **All state process-local; horizontal scale breaks correctness** — `apps/gateway/src/app.ts:40-44`, `apps/gateway/src/lib/store.ts:52-127`, `apps/gateway/src/lib/webhooks.ts:8`, `apps/gateway/src/routes/v1/chat.ts:64`, `packages/routing/src/index.ts:21-24`. `MemoryKeyStore/UsageStore/OrgPlans/WebhookStore/inflight/breakers` lost on restart, diverge across pods. Revocation, quota, idempotency, routing all bypassable. Need PG+Redis as source of truth.
+2. **Quota TOCTOU, no reservation; concurrent overspend unbounded** — `apps/gateway/src/middleware/quota.ts:26-53`, `packages/billing/src/quota.ts:15`. Check-then-act on `periodUsage` scan; stream loop checks only `remainingTokens` via `len/4` heuristic (`chat.ts:296,396`), never `remainingSpend`. Fix: Redis LUA decrement/reserve + reconcile on completion.
+3. **Idempotency is 409-not-replay + local-only + race** — `apps/gateway/src/routes/v1/chat.ts:100-110,427`. `inflight:Set` per pod; check-then-add races; existing returns 409 instead of replaying stored response. Concurrent duplicates double-charge. Fix: DB unique `(orgId,idemKey)` + return original.
+4. **Billing miscounts: $0 cache hits, error-partials counted, OOM store** — `chat.ts:139-151`, `lib/store.ts:97-119`, `packages/billing/src/rollup.ts:35`. Cache HIT writes `costUsd:0`; `usageByOrg` counts only `ok` but `periodUsage` counts `ok OR tokens>0`; stream abort bills estimates. `records:UsageRecord[]` unbounded → OOM at 10M/day. Fix: single counting rule, margin-aware cache price, persistent partitioned table.
+5. **Routing split-brain; docs promise shared health/prober that doesn't exist** — `packages/routing/src/index.ts:41-48,84-88`, `app.ts:78-97`, `docs/ARCHITECTURE.md:10,23`. Breaker/health per pod, no Redis/PG integration; `readyz` probes providers inline per pod. Fix: Redis-shared EWMA+breaker, external prober, staggered half-open.
+6. **Auth rotation single-pepper; enumerable prefix; spoofable anon RL** — `app.ts:70`, `packages/auth/src/index.ts:50,99`, `middleware/ratelimit.ts:9-10`. Only `[[v,pepper]]` so rotation invalidates old keys; 6-char prefix brute-forceable; `x-forwarded-for` trusted. Fix: multi-pepper map, longer prefix + rate-limited auth, `X-Forwarded-For` only from trusted proxy.
+7. **Webhook SSRF + fire-and-forget delivery** — `routes/v1/webhooks.ts:23-39`, `lib/webhooks.ts:49-57`. Any `keys:write` URL (incl. IMDS) dialed by gateway; `emit` unawaited, no queue/retry persistence despite `deliver()` retry helper. Fix: egress allowlist + DNS pinning, durable outbox queue.
+8. **Rate-limit not global; fail-open default risk; per-path fan-out** — `app.ts:64-69`, `middleware/ratelimit.ts:10`. `MemoryTokenBucket` when `REDIS_URL` unset (prod warns but continues); bucket `key:{id}:{path}` lets attacker multiply quota across paths; `RATE_LIMIT_FAIL_OPEN=true` disables protection. Fix: require Redis in prod, bucket by org+scope, fail-closed on auth path.
+9. **Stream accounting leak: $0 when usage chunk missing; 5-min kill mid-invoice** — `chat.ts:380-453`. `accCost/Input/Output` stay 0 unless provider sends `usage`; interrupted streams still insert error rows counted toward quota. Fix: server-side token estimate fallback + reconcile, idempotent finalize once.
+10. **Doc drift hides gaps; web key in localStorage** — `docs/ARCHITECTURE.md:5-10,38-43`, `docs/API_DESIGN.md:9-34`, `apps/web/lib/api.ts:14-26`. Docs claim stateless/HPA/PG/Redis-stream/billing-worker/prober/OTel — none wired. API doc omits `idempotency_key/cache_ttl/402/409/SSE infergate.route/webhook+routing` endpoints. Browser `localStorage` key = XSS exfil. Fix: update docs, httpOnly session proxy for web.
+
+## Multi-region gaps (explicit)
+No global store (PG/Redis-stream absent); `periodUsage` scans diverge → per-region quota over-grant. No region-aware `candidatesFor` (cost/latency/residency ignored). No cross-region idempotency lock. Webhooks fire per-region → duplicates, no exactly-once. No residency/GDPR pinning, no global RL sync (single `REDIS_URL`), no clock-skew/partition plan, `readyz` region-blind.

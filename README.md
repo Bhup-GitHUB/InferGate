@@ -1,2 +1,51 @@
 # InferGate
-A mini OpenRouter/LiteLLM + Kubernetes inference platform.
+
+One OpenAI-compatible endpoint for every model. Intelligent routing, quotas,
+billing, and a live console — running locally in minutes.
+
+```bash
+cp .env.example .env
+bun install
+API_KEY_PEPPER=$(bun -e "console.log(require('node:crypto').randomBytes(24).toString('hex'))") \
+  PRINT_SEED_KEY=1 PORT=3000 bun run apps/gateway/src/index.ts
+```
+
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "authorization: Bearer $SEED_API_KEY" \
+  -H "content-type: application/json" \
+  -d '{"model":"auto","messages":[{"role":"user","content":"Explain Kubernetes"}]}'
+```
+
+## Console
+
+```bash
+bun run --cwd apps/web dev
+```
+
+Open http://localhost:3001, paste the seed key: overview, streaming
+playground, activity feed, model catalog, GPU fleet simulator, key management,
+webhooks, billing.
+
+## What is inside
+
+- `apps/gateway` — Hono/Bun gateway: auth, rate limits, quotas, routing with
+  circuit breakers + failover, SSE streaming, billing, webhooks.
+- `apps/web` — Next.js + Tailwind console (black glass, live charts).
+- `packages/*` — auth (HMAC keys), providers (+egress guard), routing,
+  billing, cache/Redis, scheduler sim, webhooks, db (Drizzle + PG migration).
+- `services/*` — billing worker, health prober.
+- `deployments/helm/infergate` — production chart (3→100 pods, HPA).
+- `docs/` — decisions, audits, chaos evidence, load baseline, final review.
+
+## API surface
+
+`POST /v1/chat/completions` (JSON + `stream:true` SSE) · `GET /v1/models` ·
+`POST /v1/keys` · key rotation/revocation · `GET /v1/usage[/daily]` ·
+`GET /v1/requests` · `GET /v1/billing/summary` · `GET /v1/routing/health` ·
+webhook CRUD · `POST /v1/scheduler/placement` · `/healthz` `/readyz` `/metrics`.
+
+## Production path
+
+Set `API_KEY_PEPPER`, `DATABASE_URL`, `REDIS_URL`, `METRICS_TOKEN`;
+see `FINAL_REVIEW.md` for the PG-backed multi-pod milestone before scaling out.
