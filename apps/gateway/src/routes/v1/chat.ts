@@ -16,6 +16,7 @@ export interface ChatDeps {
 
 export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  const inflight = new Set<string>();
 
   app.post("/chat/completions", async (c) => {
     if (!requireScope(c, "chat:write")) {
@@ -45,11 +46,16 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
     span.setAttribute("provider", adapter.id);
     span.setAttribute("model", modelId);
 
-    if (req.idempotency_key) {
-      const existing = await deps.usage.findByIdempotencyKey(req.idempotency_key).catch(() => null);
-      if (existing && existing.orgId === auth.orgId) {
+    const idemScope = req.idempotency_key ? `${auth.orgId}:${req.idempotency_key}` : null;
+    if (idemScope) {
+      if (inflight.has(idemScope)) {
+        return c.json(errorBody("Duplicate request in flight", "invalid_request_error", "idempotent_replay"), 409);
+      }
+      const existing = await deps.usage.findByIdempotencyKey(auth.orgId, req.idempotency_key as string).catch(() => null);
+      if (existing) {
         return c.json(errorBody("Duplicate request", "invalid_request_error", "idempotent_replay"), 409);
       }
+      inflight.add(idemScope);
     }
 
     const internal = {
@@ -63,6 +69,8 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
     if (!req.stream) {
       const started = Date.now();
       const controller = new AbortController();
+      const onClientAbort = () => controller.abort();
+      c.req.raw.signal.addEventListener("abort", onClientAbort, { once: true });
       const timeout = setTimeout(() => controller.abort(), deps.config.streamMaxDurationMs);
       try {
         const result = await adapter.chatCompletion(internal, controller.signal);
@@ -98,12 +106,12 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         });
       } catch (err) {
         observeProviderError(adapter.id);
-        const message = err instanceof Error ? err.message : "Provider error";
+        const message = err instanceof Error ? err.message : "provider_failure";
         if (message === "aborted") {
-          return c.json(errorBody("Request timed out", "provider_error", "provider_timeout"), 502);
+          return c.json(errorBody("Request timed out", "provider_error", "provider_timeout"), 504);
         }
         await deps.usage.insert({
-          idempotencyKey: null,
+          idempotencyKey: req.idempotency_key ?? null,
           orgId: auth.orgId,
           keyId: auth.keyId,
           providerId: adapter.id,
@@ -113,11 +121,15 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
           latencyMs: Date.now() - started,
           costUsd: 0,
           status: "error",
-          error: message,
+          error: "provider_unavailable",
         });
         return c.json(errorBody("Provider unavailable", "provider_error", "provider_unavailable"), 502);
       } finally {
         clearTimeout(timeout);
+        c.req.raw.signal.removeEventListener("abort", onClientAbort);
+        if (idemScope) {
+          inflight.delete(idemScope);
+        }
         span.end();
       }
     }
@@ -134,13 +146,23 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
     let accCost = 0;
     let settled = false;
 
+    let clientGone = false;
+    const onStreamClientAbort = () => {
+      clientGone = true;
+      streamController.abort();
+    };
+    c.req.raw.signal.addEventListener("abort", onStreamClientAbort, { once: true });
+
     c.header("x-infergate-provider", adapter.id);
     c.header("x-infergate-retry", "0");
     return streamSSE(c, async (stream) => {
+      stream.onAbort(onStreamClientAbort);
       try {
         const gen = adapter.streamCompletion(internal, streamController.signal);
+        let interrupted = false;
         for await (const chunk of gen) {
-          if (stream.aborted) {
+          if (stream.aborted || clientGone) {
+            interrupted = true;
             break;
           }
           clearTimeout(idleTimer);
@@ -162,8 +184,10 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             });
           }
         }
-        await stream.writeSSE({ data: "[DONE]" });
-        settled = true;
+        if (!interrupted && !streamController.signal.aborted) {
+          await stream.writeSSE({ data: "[DONE]" });
+          settled = true;
+        }
       } catch {
         observeProviderError(adapter.id);
         await stream.writeSSE({
@@ -172,6 +196,10 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       } finally {
         clearTimeout(idleTimer);
         clearTimeout(maxTimer);
+        c.req.raw.signal.removeEventListener("abort", onStreamClientAbort);
+        if (idemScope) {
+          inflight.delete(idemScope);
+        }
         const latencyMs = Date.now() - startedAt;
         await deps.usage
           .insert({
