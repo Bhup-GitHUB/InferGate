@@ -14,25 +14,35 @@ const LINKS = [
 export function Nav(): React.ReactElement {
   const path = usePathname();
   return (
-    <aside className="nav">
-      <div className="brand">
-        <div className="brand-mark">I</div>
+    <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col gap-2 border-r border-edge bg-panel/90 px-5 py-7 backdrop-blur">
+      <div className="mb-7 flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-acid to-ice text-lg font-black text-void shadow-[0_0_24px_rgba(200,255,46,0.45)]">
+          I
+        </div>
         <div>
-          <div className="brand-name">InferGate</div>
-          <div className="brand-sub">AI Gateway</div>
+          <div className="text-[17px] font-extrabold tracking-wide">InferGate</div>
+          <div className="text-[11px] uppercase tracking-[0.14em] text-fog">AI Gateway</div>
         </div>
       </div>
       {LINKS.map((l) => (
-        <Link key={l.href} href={l.href} className={path === l.href ? "nav-link active" : "nav-link"}>
-          <span className="nav-dot" />
+        <Link
+          key={l.href}
+          href={l.href}
+          className={
+            path === l.href
+              ? "flex items-center gap-3 rounded-xl border border-edge bg-panel2 px-3.5 py-2.5 text-sm font-medium text-white"
+              : "flex items-center gap-3 rounded-xl border border-transparent px-3.5 py-2.5 text-sm font-medium text-fog transition hover:bg-panel2 hover:text-white"
+          }
+        >
+          <span className={path === l.href ? "h-1.5 w-1.5 rounded-full bg-acid shadow-[0_0_10px_#c8ff2e]" : "h-1.5 w-1.5 rounded-full bg-[#3a3a42]"} />
           {l.label}
         </Link>
       ))}
-      <div className="nav-foot">
-        <div className="card-title">Gateway status</div>
-        <div className="pill">
-          <span className="dot dot-ok" />
-          <span className="mono">operational</span>
+      <div className="mt-auto rounded-xl border border-edge bg-panel p-3.5">
+        <div className="mb-2 text-[11px] uppercase tracking-[0.12em] text-fog">Gateway status</div>
+        <div className="inline-flex items-center gap-2 rounded-full border border-edge bg-[#131318] px-3 py-1 text-xs font-semibold">
+          <span className="h-1.5 w-1.5 rounded-full bg-acid shadow-[0_0_8px_#c8ff2e]" />
+          <span className="font-mono">operational</span>
         </div>
       </div>
     </aside>

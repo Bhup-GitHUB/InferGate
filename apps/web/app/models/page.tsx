@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { KeyGate } from "@/components/KeyGate";
-import { getKey, listModels, type ModelEntry } from "@/lib/api";
+import { KeyGate } from "../../components/KeyGate";
+import { getKey, listModels, type ModelEntry } from "../../lib/api";
 
 const PRICES: Record<string, string> = {
   "gpt-4o-mini": "$0.50 / $1.50 per 1M",
@@ -37,19 +37,17 @@ export default function Models(): React.ReactElement {
   }
 
   return (
-    <div>
-      <h1 className="page-title">Model catalog</h1>
-      <p className="page-sub">One endpoint, every engine. Pick by alias — routing handles the rest.</p>
-      <div className="grid-4">
+    <div className="mx-auto max-w-6xl flex-1 px-6 py-10 lg:px-12">
+      <h1 className="text-3xl font-extrabold tracking-tight">Model catalog</h1>
+      <p className="mb-8 mt-1.5 text-sm text-fog">One endpoint, every engine. Pick by alias — routing handles the rest.</p>
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         {models.map((m) => (
-          <div key={m.id} className="card">
-            <div className="card-title mono">{m.owned_by}</div>
-            <div style={{ fontSize: 20, fontWeight: 800 }} className="mono">
-              {m.id}
-            </div>
-            <p style={{ color: "var(--muted)", fontSize: 13 }}>{PRICES[m.id] ?? "metered"}</p>
-            <span className="pill">
-              <span className="dot dot-ok" />
+          <div key={m.id} className="rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
+            <div className="mb-2 font-mono text-xs uppercase tracking-[0.12em] text-fog">{m.owned_by}</div>
+            <div className="font-mono text-xl font-extrabold">{m.id}</div>
+            <p className="text-[13px] text-fog">{PRICES[m.id] ?? "metered"}</p>
+            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-edge bg-[#131318] px-3 py-1 text-xs font-semibold">
+              <span className="h-1.5 w-1.5 rounded-full bg-acid shadow-[0_0_8px_#c8ff2e]" />
               available
             </span>
           </div>

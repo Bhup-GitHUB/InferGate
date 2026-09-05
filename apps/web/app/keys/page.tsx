@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { KeyGate } from "@/components/KeyGate";
-import { createKey, getKey, revokeKey, rotateKey } from "@/lib/api";
+import { KeyGate } from "../../components/KeyGate";
+import { createKey, getKey, revokeKey, rotateKey } from "../../lib/api";
 
 interface Row {
   id: string;
@@ -58,37 +58,50 @@ export default function Keys(): React.ReactElement {
   }
 
   return (
-    <div>
-      <h1 className="page-title">API keys</h1>
-      <p className="page-sub">Secrets are shown once at creation. Rotation keeps a 24h grace window.</p>
-      <div className="card">
-        <div className="card-title">New key scopes</div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <input className="input mono" value={scopes} onChange={(e) => setScopes(e.target.value)} />
-          <button className="btn btn-primary" onClick={create}>
+    <div className="mx-auto max-w-6xl flex-1 px-6 py-10 lg:px-12">
+      <h1 className="text-3xl font-extrabold tracking-tight">API keys</h1>
+      <p className="mb-8 mt-1.5 text-sm text-fog">Secrets are shown once at creation. Rotation keeps a 24h grace window.</p>
+      <div className="rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
+        <div className="mb-2.5 text-xs uppercase tracking-[0.12em] text-fog">New key scopes</div>
+        <div className="flex gap-3">
+          <input
+            className="w-full rounded-xl border border-edge bg-[#08080a] px-3.5 py-3 font-mono text-sm outline-none focus:border-acid"
+            value={scopes}
+            onChange={(e) => setScopes(e.target.value)}
+          />
+          <button
+            className="shrink-0 rounded-xl border border-acid bg-acid px-5 py-3 text-sm font-bold text-black shadow-[0_0_24px_rgba(200,255,46,0.35)] transition hover:-translate-y-px"
+            onClick={create}
+          >
             Create key
           </button>
         </div>
-        {error !== "" && <p style={{ color: "var(--red)", fontSize: 13 }}>{error}</p>}
+        {error !== "" && <p className="text-[13px] text-red-400">{error}</p>}
       </div>
-      <div className="card section">
-        <div className="card-title">Session keys</div>
-        {rows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 14 }}>No keys created in this session yet.</p>}
+      <div className="mt-4 rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
+        <div className="mb-2 text-xs uppercase tracking-[0.12em] text-fog">Session keys</div>
+        {rows.length === 0 && <p className="text-sm text-fog">No keys created in this session yet.</p>}
         {rows.map((r) => (
-          <div key={r.id} style={{ borderTop: "1px solid var(--line)", padding: "14px 0" }}>
-            <div className="row-between">
-              <span className="mono">…{r.prefix}</span>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn" onClick={() => rotate(r.id)}>
+          <div key={r.id} className="border-t border-edge py-3.5 first:border-t-0">
+            <div className="flex items-center justify-between">
+              <span className="font-mono">…{r.prefix}</span>
+              <div className="flex gap-2">
+                <button
+                  className="rounded-xl border border-edge bg-panel2 px-4 py-2 text-sm font-semibold transition hover:-translate-y-px"
+                  onClick={() => rotate(r.id)}
+                >
                   Rotate
                 </button>
-                <button className="btn btn-danger" onClick={() => revoke(r.id)}>
+                <button
+                  className="rounded-xl border border-[#4a2323] px-4 py-2 text-sm font-semibold text-red-400 transition hover:-translate-y-px"
+                  onClick={() => revoke(r.id)}
+                >
                   Revoke
                 </button>
               </div>
             </div>
             {r.secret && (
-              <div className="key-box mono" style={{ marginTop: 10 }}>
+              <div className="mt-2.5 break-all rounded-xl border border-dashed border-[#3a3a44] bg-[#08080a] p-3.5 font-mono text-[13px] text-acid">
                 {r.secret}
               </div>
             )}
