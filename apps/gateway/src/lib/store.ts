@@ -28,6 +28,24 @@ export interface UsageStore {
   insert(record: Omit<UsageRecord, "id" | "createdAt">): Promise<UsageRecord>;
   findByIdempotencyKey(orgId: string, key: string): Promise<UsageRecord | null>;
   usageByOrg(orgId: string): Promise<{ requests: number; inputTokens: number; outputTokens: number; costUsd: number }>;
+  recordsByOrg(orgId: string, sinceMs: number): Promise<UsageRecord[]>;
+  periodUsage(orgId: string, sinceMs: number): Promise<{ tokens: number; spendUsd: number }>;
+}
+
+export class OrgPlans {
+  private plans = new Map<string, string>();
+  private static valid = new Set(["free", "pro", "enterprise"]);
+
+  get(orgId: string): string {
+    return this.plans.get(orgId) ?? "free";
+  }
+
+  set(orgId: string, plan: string): void {
+    if (!OrgPlans.valid.has(plan)) {
+      throw new Error(`Unknown plan: ${plan}`);
+    }
+    this.plans.set(orgId, plan);
+  }
 }
 
 export class MemoryKeyStore implements KeyStore {
@@ -82,6 +100,20 @@ export class MemoryUsageStore implements UsageStore {
       inputTokens: rows.reduce((n, r) => n + r.inputTokens, 0),
       outputTokens: rows.reduce((n, r) => n + r.outputTokens, 0),
       costUsd: rows.reduce((n, r) => n + r.costUsd, 0),
+    };
+  }
+
+  async recordsByOrg(orgId: string, sinceMs: number): Promise<UsageRecord[]> {
+    return this.records.filter((r) => r.orgId === orgId && r.createdAt >= sinceMs);
+  }
+
+  async periodUsage(orgId: string, sinceMs: number): Promise<{ tokens: number; spendUsd: number }> {
+    const rows = this.records.filter(
+      (r) => r.orgId === orgId && r.createdAt >= sinceMs && (r.status === "ok" || r.inputTokens + r.outputTokens > 0),
+    );
+    return {
+      tokens: rows.reduce((n, r) => n + r.inputTokens + r.outputTokens, 0),
+      spendUsd: rows.reduce((n, r) => n + r.costUsd, 0),
     };
   }
 }

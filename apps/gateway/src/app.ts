@@ -16,12 +16,16 @@ import { modelRoutes } from "./routes/v1/models";
 import { keyRoutes } from "./routes/v1/keys";
 import { usageRoutes } from "./routes/v1/usage";
 import { routingRoutes } from "./routes/v1/routing";
+import { billingRoutes } from "./routes/v1/billing";
+import { quotaMiddleware } from "./middleware/quota";
+import { OrgPlans } from "./lib/store";
 
 export interface AppHandles {
   app: Hono<AppEnv>;
   keys: MemoryKeyStore;
   usage: MemoryUsageStore;
   routing: RoutingEngine;
+  plans: OrgPlans;
 }
 
 export function createApp(env: Record<string, string | undefined> = {}): AppHandles {
@@ -29,6 +33,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   const config = loadConfig(merged);
   const keys = new MemoryKeyStore();
   const usage = new MemoryUsageStore();
+  const plans = new OrgPlans();
   const registry = createDefaultRegistry();
   const routing = new RoutingEngine({
     failureThreshold: config.breakerThreshold,
@@ -84,12 +89,14 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   const guarded = new Hono<AppEnv>();
   guarded.use("*", authMiddleware(keys, peppers));
   guarded.use("*", rateLimitMiddleware(limiter, config.rateLimitFailOpen));
+  guarded.use("*", quotaMiddleware({ usage, plans }));
   guarded.route("/", chatRoutes({ registry, routing, usage, config }));
   guarded.route("/", modelRoutes(registry));
   guarded.route("/", keyRoutes({ keys, config }));
   guarded.route("/", usageRoutes(usage));
+  guarded.route("/", billingRoutes({ usage, plans }));
   guarded.route("/", routingRoutes(routing, registry));
   app.route("/v1", guarded);
 
-  return { app, keys, usage, routing };
+  return { app, keys, usage, routing, plans };
 }

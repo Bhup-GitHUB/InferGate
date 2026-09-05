@@ -1,0 +1,60 @@
+import { Hono } from "hono";
+import { buildInvoice, capsFor, monthWindow, rollupDaily } from "@infergate/billing";
+import { errorBody } from "@infergate/schemas";
+import type { AppEnv, AuthContext } from "../../lib/env";
+import { OrgPlans, type UsageStore } from "../../lib/store";
+import { requireScope } from "../../middleware/auth";
+
+export interface BillingDeps {
+  usage: UsageStore;
+  plans: OrgPlans;
+}
+
+export function billingRoutes(deps: BillingDeps): Hono<AppEnv> {
+  const app = new Hono<AppEnv>();
+
+  app.get("/usage/daily", async (c) => {
+    if (!requireScope(c, "usage:read")) {
+      return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
+    }
+    const auth = c.get("auth") as AuthContext;
+    const days = Math.min(Math.max(Number(c.req.query("days") ?? "7"), 1), 90);
+    const now = Date.now();
+    const rows = await deps.usage.recordsByOrg(auth.orgId, now - days * 86400000).catch(() => null);
+    if (!rows) {
+      return c.json(errorBody("Usage unavailable", "provider_error", "usage_unavailable"), 503);
+    }
+    return c.json({ object: "usage_daily", org_id: auth.orgId, days: rollupDaily(rows, days, now) });
+  });
+
+  app.get("/billing/summary", async (c) => {
+    if (!requireScope(c, "billing:read")) {
+      return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
+    }
+    const auth = c.get("auth") as AuthContext;
+    const plan = deps.plans.get(auth.orgId);
+    const caps = capsFor(plan);
+    const { start, month } = monthWindow(Date.now());
+    const [period, rows] = await Promise.all([
+      deps.usage.periodUsage(auth.orgId, start),
+      deps.usage.recordsByOrg(auth.orgId, start),
+    ]).catch(() => null) ?? [null, null];
+    if (!period || !rows) {
+      return c.json(errorBody("Billing unavailable", "provider_error", "billing_unavailable"), 503);
+    }
+    const invoice = buildInvoice(rows, `${month}-01`, month);
+    return c.json({
+      object: "billing_summary",
+      org_id: auth.orgId,
+      plan: caps.plan,
+      period: month,
+      tokensUsed: period.tokens,
+      tokenQuota: caps.monthlyTokens,
+      spendUsd: Math.round(period.spendUsd * 1e6) / 1e6,
+      quotaUsd: caps.monthlySpendUsd,
+      invoice,
+    });
+  });
+
+  return app;
+}
