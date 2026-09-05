@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["bun"],
+    "paths": {
+      "@infergate/auth": ["./packages/auth/src/index.ts"],
+      "@infergate/schemas": ["./packages/schemas/src/index.ts"],
+      "@infergate/providers": ["./packages/providers/src/index.ts"],
+      "@infergate/db": ["./packages/db/src/index.ts"],
+      "@infergate/ratelimit": ["./packages/ratelimit/src/index.ts"],
+      "@infergate/otel": ["./packages/otel/src/index.ts"]
+    }
+  },
+  "include": ["apps/**/src", "packages/**/src", "services/**/src", "tests"]
+}
