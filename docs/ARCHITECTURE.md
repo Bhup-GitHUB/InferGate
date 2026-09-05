@@ -2,11 +2,13 @@
 
 ## Status
 
-Milestone 1 (this tree): single-node gateway with in-memory key/usage/plan stores,
-per-process routing health, and mock providers. PostgreSQL schema + migrations,
-Redis coordination interfaces, workers, and Helm charts exist; PG/Redis-backed
-stores are the next milestone (see FINAL_REVIEW.md for the honest gap list).
-Deploy more than one pod only after that migration.
+Milestone 2 (this tree): gateway runs on Postgres when `DATABASE_URL` is set
+(`PgKeyStore`/`PgUsageStore`, atomic idempotency via `ON CONFLICT DO NOTHING`,
+migrations runner, `db` in `/readyz`) and Redis when `REDIS_URL` is set (LUA
+rate limits, response cache, locks) — both verified live. Without those env
+vars it falls back to memory stores. Remaining before multi-pod scale-out:
+shared breaker/EWMA state, Redis key cache, PG-backed plans/webhooks/rules
+(see FINAL_REVIEW.md).
 
 ## Overview
 

@@ -1,0 +1,59 @@
+import { describe, expect, test } from "bun:test";
+import { generateKey } from "@infergate/auth";
+import { createSql, PgKeyStore, PgUsageStore } from "@infergate/db";
+
+const DATABASE_URL = process.env["TEST_DATABASE_URL"] ?? "";
+const describePg = DATABASE_URL === "" ? describe.skip : describe;
+
+describePg("postgres stores", () => {
+  const sql = DATABASE_URL === "" ? null : createSql({ connectionString: DATABASE_URL, maxConnections: 5, statementTimeoutMs: 5000 });
+
+  test("key crud with rotation grace", async () => {
+    const keys = new PgKeyStore(sql!);
+    const orgId = crypto.randomUUID();
+    await sql!`INSERT INTO organizations (id, name) VALUES (${orgId}, 'pg org')`;
+    const g = generateKey(orgId, ["chat:write"], "pg-pepper-0123456789", 1);
+    const id = crypto.randomUUID();
+    await keys.save({ id, createdAt: Date.now(), ...g.record });
+    const found = await keys.findByPrefix(g.prefix);
+    expect(found?.id).toBe(id);
+    expect(found?.orgId).toBe(orgId);
+    await keys.scheduleRevoke(id, Date.now() + 3600000);
+    const graced = await keys.findById(id);
+    expect((graced?.revokedAt ?? 0)).toBeGreaterThan(Date.now());
+    await keys.revoke(id, Date.now());
+    const revoked = await keys.findById(id);
+    expect((revoked?.revokedAt ?? 0)).toBeLessThanOrEqual(Date.now());
+  });
+
+  test("usage insert replays idempotency atomically", async () => {
+    const usage = new PgUsageStore(sql!);
+    const orgId = crypto.randomUUID();
+    await sql!`INSERT INTO organizations (id, name) VALUES (${orgId}, 'pg usage')`;
+    const row = {
+      idempotencyKey: "pg-idem-1",
+      orgId,
+      keyId: null,
+      providerId: "openai",
+      model: "gpt-4o-mini",
+      inputTokens: 10,
+      outputTokens: 5,
+      latencyMs: 12,
+      costUsd: 0.001,
+      status: "ok",
+      error: null,
+    };
+    const first = await usage.insert(row);
+    const second = await usage.insert(row);
+    expect(second.id).toBe(first.id);
+    const found = await usage.findByIdempotencyKey(orgId, "pg-idem-1");
+    expect(found?.id).toBe(first.id);
+    const summary = await usage.usageByOrg(orgId);
+    expect(summary.requests).toBe(1);
+    const period = await usage.periodUsage(orgId, 0);
+    expect(period.tokens).toBe(15);
+    const recent = await usage.recent(orgId, 10);
+    expect(recent.length).toBe(1);
+    expect(await usage.ping()).toBe(true);
+  });
+});
