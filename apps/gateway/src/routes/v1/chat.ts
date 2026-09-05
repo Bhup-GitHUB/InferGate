@@ -223,6 +223,10 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
     let winner = ordered[0].providerId;
     let lastStreamAttempt = "unknown";
     let retries = 0;
+    let budgetExceeded = false;
+    const quota = c.get("quota") as AppEnv["Variables"]["quota"] | undefined;
+    const inputEst = Math.ceil(internal.messages.reduce((n, m) => n + m.content.length, 0) / 4);
+    let outEst = 0;
     let clientGone = false;
     const onStreamClientAbort = () => {
       clientGone = true;
@@ -313,9 +317,19 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
                 choices: [{ index: 0, delta: { content: chunk.delta }, finish_reason: null }],
               }),
             });
+            outEst += Math.ceil(chunk.delta.length / 4);
+            if (quota && inputEst + outEst > quota.remainingTokens) {
+              budgetExceeded = true;
+              streamController.abort();
+              break;
+            }
           }
         }
-        if (!interrupted && !streamController.signal.aborted) {
+        if (budgetExceeded) {
+          await stream.writeSSE({
+            data: JSON.stringify({ error: { message: "Quota exceeded", type: "quota_error", code: "quota_exceeded" } }),
+          });
+        } else if (!interrupted && !streamController.signal.aborted) {
           await stream.writeSSE({ data: "[DONE]" });
           settled = true;
           if (active) {
@@ -338,6 +352,10 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
           inflight.delete(idemScope);
         }
         const latencyMs = Date.now() - startedAt;
+        if (budgetExceeded) {
+          accInput = Math.max(accInput, inputEst);
+          accOutput = Math.max(accOutput, outEst);
+        }
         await deps.usage
           .insert({
             idempotencyKey: req.idempotency_key ?? null,
@@ -350,7 +368,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             latencyMs,
             costUsd: accCost,
             status: settled ? "ok" : "error",
-            error: settled ? null : "stream_interrupted",
+            error: settled ? null : budgetExceeded ? "quota_exceeded" : "stream_interrupted",
           })
           .catch(() => undefined);
         observeRequest(winner, modelId, latencyMs, accInput, accOutput, accCost);

@@ -6,7 +6,7 @@ const PEPPER = "integration-pepper";
 
 async function setup() {
   const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "1000" });
-  const g = generateKey("org_test", ["chat:write", "models:read", "usage:read", "keys:write"], PEPPER, 1);
+  const g = generateKey("org_test", ["chat:write", "models:read", "usage:read", "billing:read", "keys:write"], PEPPER, 1);
   const keyId = crypto.randomUUID();
   await handles.keys.save({ id: keyId, createdAt: Date.now(), ...g.record });
   return { ...handles, publicKey: g.publicKey, keyId };
