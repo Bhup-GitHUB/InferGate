@@ -131,7 +131,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   guarded.route("/", keyRoutes({ keys, config }));
   guarded.route("/", usageRoutes(usage));
   guarded.route("/", billingRoutes({ usage, plans }));
-  guarded.route("/", webhookRoutes({ store: webhooks }));
+  guarded.route("/", webhookRoutes({ store: webhooks, notify }));
   guarded.route("/", schedulerRoutes());
   guarded.route("/", routingRoutes(routing, registry));
   app.route("/v1", guarded);

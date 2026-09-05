@@ -34,8 +34,17 @@ export class WebhookStore {
   }
 }
 
+export interface DeliveryRecord {
+  at: string;
+  orgId: string;
+  type: WebhookEventType;
+  url: string;
+  ok: boolean;
+}
+
 export class Notifier {
   private fetchImpl: FetchImpl;
+  private log: DeliveryRecord[] = [];
 
   constructor(fetchImpl?: FetchImpl) {
     this.fetchImpl =
@@ -51,9 +60,15 @@ export class Notifier {
     for (const endpoint of store.forEvent(orgId, type)) {
       deliver(this.fetchImpl, endpoint, event)
         .then((ok) => {
+          this.log.unshift({ at: new Date().toISOString(), orgId, type, url: endpoint.url, ok });
+          this.log = this.log.slice(0, 50);
           console.log(structuredLog({ level: ok ? "info" : "error", msg: "webhook_delivery", type, orgId, ok }));
         })
         .catch(() => undefined);
     }
+  }
+
+  deliveries(orgId: string): DeliveryRecord[] {
+    return this.log.filter((d) => d.orgId === orgId);
   }
 }

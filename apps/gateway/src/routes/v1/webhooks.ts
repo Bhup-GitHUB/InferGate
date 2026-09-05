@@ -4,7 +4,7 @@ import type { WebhookEventType } from "@infergate/webhooks";
 import { assertWebhookUrl } from "@infergate/providers";
 import { errorBody } from "@infergate/schemas";
 import type { AppEnv, AuthContext } from "../../lib/env";
-import { WebhookStore } from "../../lib/webhooks";import { requireScope } from "../../middleware/auth";
+import { Notifier, WebhookStore } from "../../lib/webhooks";import { requireScope } from "../../middleware/auth";
 
 const EVENTS: WebhookEventType[] = ["quota.warning", "quota.exceeded", "provider.outage"];
 
@@ -16,6 +16,7 @@ const webhookSchema = z.object({
 
 export interface WebhookDeps {
   store: WebhookStore;
+  notify: Notifier;
 }
 
 export function webhookRoutes(deps: WebhookDeps): Hono<AppEnv> {
@@ -64,6 +65,14 @@ export function webhookRoutes(deps: WebhookDeps): Hono<AppEnv> {
       return c.json(errorBody("Webhook not found", "invalid_request_error", "webhook_not_found"), 404);
     }
     return c.json({ deleted: true });
+  });
+
+  app.get("/webhooks/deliveries", (c) => {
+    if (!requireScope(c, "keys:write")) {
+      return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
+    }
+    const auth = c.get("auth") as AuthContext;
+    return c.json({ object: "list", data: deps.notify.deliveries(auth.orgId) });
   });
 
   return app;

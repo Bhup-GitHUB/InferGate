@@ -42,6 +42,13 @@ describe("webhooks", () => {
     expect(deleted.status).toBe(200);
   });
 
+  test("deliveries feed is scoped", async () => {
+    const { app, publicKey } = await setup();
+    const res = await app.request("/v1/webhooks/deliveries", { headers: { authorization: `Bearer ${publicKey}` } });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual([]);
+  });
+
   test("delivery is hmac signed with retries", async () => {
     const seen: { headers: Record<string, string>; body: string }[] = [];
     const event = buildEvent("provider.outage", "org_hook", { provider: "openai" });
