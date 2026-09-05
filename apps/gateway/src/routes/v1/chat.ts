@@ -9,6 +9,7 @@ import type { Redis } from "ioredis";
 import type { GatewayConfig } from "../../lib/config";
 import type { AppEnv, AuthContext } from "../../lib/env";
 import type { UsageStore } from "../../lib/store";
+import { Notifier, WebhookStore } from "../../lib/webhooks";
 import { requireScope } from "../../middleware/auth";
 
 export interface ChatDeps {
@@ -17,6 +18,8 @@ export interface ChatDeps {
   usage: UsageStore;
   config: GatewayConfig;
   redis: Redis | null;
+  webhooks: WebhookStore;
+  notify: Notifier;
 }
 
 const AUTO_MODELS: Record<string, string> = {
@@ -67,6 +70,14 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
     const auth = c.get("auth") as AuthContext;
     const span = startSpan("gateway.chat");
     span.setAttribute("orgId", auth.orgId);
+
+    const failWithOutage = (providerId: string): void => {
+      const before = deps.routing.circuitState(providerId);
+      deps.routing.reportFailure(providerId);
+      if (before !== "open" && deps.routing.circuitState(providerId) === "open") {
+        deps.notify.emit(deps.webhooks, auth.orgId, "provider.outage", { provider: providerId });
+      }
+    };
 
     let body: unknown;
     try {
@@ -224,7 +235,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             if (message === "aborted") {
               throw err;
             }
-            deps.routing.reportFailure(adapter.id);
+            failWithOutage(adapter.id);
             observeProviderError(adapter.id);
             if (attempts < ordered.length) {
               await sleep(deps.routing.backoffFor(attempts - 1), controller.signal).catch(() => undefined);
@@ -322,7 +333,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
           try {
             const first = await gen.next();
             if (first.done) {
-              deps.routing.reportFailure(adapter.id);
+              failWithOutage(adapter.id);
               continue;
             }
             active = adapter;
@@ -342,7 +353,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             if (message === "aborted") {
               throw err;
             }
-            deps.routing.reportFailure(adapter.id);
+            failWithOutage(adapter.id);
             observeProviderError(adapter.id);
           }
         }
@@ -400,7 +411,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             deps.routing.reportSuccess(active.id, Date.now() - attemptStarted);
           }
         } else if (interrupted && !clientGone && active) {
-          deps.routing.reportFailure(active.id);
+          failWithOutage(active.id);
           observeProviderError(active.id);
         }
       } catch {
@@ -419,6 +430,10 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         if (budgetExceeded) {
           accInput = Math.max(accInput, inputEst);
           accOutput = Math.max(accOutput, outEst);
+          deps.notify.emit(deps.webhooks, auth.orgId, "quota.exceeded", {
+            tokens: accInput + accOutput,
+            stream: true,
+          });
         }
         await deps.usage
           .insert({
