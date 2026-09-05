@@ -107,6 +107,50 @@ export async function revokeKey(key: string, id: string): Promise<void> {
   }
 }
 
+export async function fetchRecent(key: string, limit: number): Promise<{
+  data: { id: string; model: string; provider: string | null; input_tokens: number; output_tokens: number; latency_ms: number; cost_usd: number; status: string; created_at: string }[];
+}> {
+  const res = await authed(`/v1/requests?limit=${limit}`, key);
+  if (!res.ok) {
+    throw new Error(`requests ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function listWebhooks(key: string): Promise<{ data: { id: string; url: string; events: string[] }[] }> {
+  const res = await authed("/v1/webhooks", key);
+  if (!res.ok) {
+    throw new Error(`webhooks ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function addWebhook(key: string, url: string, secret: string, events: string[]): Promise<{ id: string }> {
+  const res = await authed("/v1/webhooks", key, { method: "POST", body: JSON.stringify({ url, secret, events }) });
+  if (!res.ok) {
+    throw new Error(`webhook create ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function removeWebhook(key: string, id: string): Promise<void> {
+  const res = await authed(`/v1/webhooks/${id}`, key, { method: "DELETE" });
+  if (!res.ok) {
+    throw new Error(`webhook delete ${res.status}`);
+  }
+}
+
+export async function fetchPlacementDemo(key: string): Promise<{
+  placements: { modelId: string; nodeId: string }[];
+  utilization: { nodeId: string; usedMemGb: number; totalMemGb: number }[];
+}> {
+  const res = await authed("/v1/scheduler/demo", key);
+  if (!res.ok) {
+    throw new Error(`scheduler ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function streamChat(
   key: string,
   model: string,
