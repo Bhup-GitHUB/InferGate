@@ -67,7 +67,7 @@ CREATE INDEX idx_routing_rules_alias ON routing_rules(model_alias);
 
 CREATE TABLE requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  idempotency_key TEXT UNIQUE,
+  idempotency_key TEXT,
   org_id UUID NOT NULL REFERENCES organizations(id),
   key_id UUID REFERENCES api_keys(id),
   provider_id TEXT,
@@ -81,6 +81,7 @@ CREATE TABLE requests (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_requests_org_created ON requests(org_id, created_at);
+CREATE UNIQUE INDEX idx_requests_org_idempotency ON requests(org_id, idempotency_key);
 CREATE INDEX idx_requests_created_brin ON requests USING BRIN(created_at);
 
 CREATE TABLE usage_daily (

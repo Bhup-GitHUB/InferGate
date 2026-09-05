@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createDefaultRegistry } from "@infergate/providers";
+import { assertEgressAllowed, createDefaultRegistry } from "@infergate/providers";
 import { MemoryTokenBucket } from "@infergate/ratelimit";
 
 describe("providers", () => {
@@ -50,6 +50,18 @@ describe("providers", () => {
     );
     controller.abort();
     await expect(pending).rejects.toThrow();
+  });
+});
+
+describe("egress", () => {
+  const policy = { allowlist: ["api.openai.com", "*.anthropic.com"], allowLoopback: false };
+  test("allows listed hosts and blocks metadata", () => {
+    expect(() => assertEgressAllowed("https://api.openai.com/v1", policy)).not.toThrow();
+    expect(() => assertEgressAllowed("https://api.anthropic.com/v1", policy)).not.toThrow();
+    expect(() => assertEgressAllowed("http://169.254.169.254/latest", { allowlist: ["169.254.169.254"], allowLoopback: true })).toThrow();
+    expect(() => assertEgressAllowed("http://localhost:8000/x", policy)).toThrow();
+    expect(() => assertEgressAllowed("https://evil.com/x", policy)).toThrow();
+    expect(() => assertEgressAllowed("http://api.openai.com/v1", policy)).toThrow();
   });
 });
 
