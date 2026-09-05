@@ -1,14 +1,25 @@
+import postgres from "postgres";
 import { generateKey } from "@infergate/auth";
 import { structuredLog } from "@infergate/otel";
 import { createApp } from "./app";
 import { loadConfig } from "./lib/config";
 
 const config = loadConfig(process.env as Record<string, string | undefined>);
-const { app, keys } = createApp();
+const { app, keys, db } = createApp();
 
-const seedOrg = process.env["SEED_ORG_ID"] ?? "org_demo";
-const seedScopes = (process.env["SEED_SCOPES"] ?? "chat:write,models:read,usage:read,keys:write").split(",");
+const seedOrg = process.env["SEED_ORG_ID"] ?? crypto.randomUUID();
+const seedScopes = (process.env["SEED_SCOPES"] ?? "chat:write,models:read,usage:read,billing:read,keys:write").split(",");
 const printSeed = process.env["PRINT_SEED_KEY"] === "1";
+
+if (db && process.env["DATABASE_URL"]) {
+  const admin = postgres(process.env["DATABASE_URL"] as string, { max: 1 });
+  await admin`
+    INSERT INTO organizations (id, name, plan) VALUES (${seedOrg}, 'seed org', 'pro')
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await admin.end();
+}
+
 const generated = generateKey(seedOrg, seedScopes, config.pepper, config.pepperVersion);
 await keys.save({
   id: crypto.randomUUID(),
@@ -16,7 +27,7 @@ await keys.save({
   ...generated.record,
 });
 
-console.log(structuredLog({ level: "info", msg: "gateway_boot", port: config.port, orgId: seedOrg }));
+console.log(structuredLog({ level: "info", msg: "gateway_boot", port: config.port, orgId: seedOrg, store: db ? "postgres" : "memory" }));
 console.log(structuredLog({ level: "info", msg: "seed_key", prefix: generated.prefix, orgId: seedOrg }));
 if (printSeed) {
   process.stderr.write(`SEED_API_KEY=${generated.publicKey}\n`);

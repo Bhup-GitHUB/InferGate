@@ -8,7 +8,8 @@ import { createDefaultRegistry } from "@infergate/providers";
 import { RoutingEngine, type RoutingStrategy } from "@infergate/routing";
 import { loadConfig } from "./lib/config";
 import type { AppEnv } from "./lib/env";
-import { MemoryKeyStore, MemoryUsageStore } from "./lib/store";
+import { MemoryKeyStore, MemoryUsageStore, type KeyStore, type UsageStore } from "./lib/store";
+import { createSql, PgKeyStore, PgUsageStore } from "@infergate/db";
 import { authMiddleware } from "./middleware/auth";
 import { rateLimitMiddleware } from "./middleware/ratelimit";
 import { tracingMiddleware } from "./middleware/tracing";
@@ -26,22 +27,32 @@ import { OrgPlans } from "./lib/store";
 
 export interface AppHandles {
   app: Hono<AppEnv>;
-  keys: MemoryKeyStore;
-  usage: MemoryUsageStore;
+  keys: KeyStore;
+  usage: UsageStore;
   routing: RoutingEngine;
   plans: OrgPlans;
   webhooks: WebhookStore;
   notify: Notifier;
+  db: { ping: () => Promise<boolean> } | null;
 }
 
 export function createApp(env: Record<string, string | undefined> = {}): AppHandles {
   const merged: Record<string, string | undefined> = { ...process.env, ...env };
   const config = loadConfig(merged);
-  const keys = new MemoryKeyStore();
-  const usage = new MemoryUsageStore();
+  let keys: KeyStore = new MemoryKeyStore();
+  let usage: UsageStore = new MemoryUsageStore();
   const plans = new OrgPlans();
   const webhooks = new WebhookStore();
   const notify = new Notifier();
+  let db: { ping: () => Promise<boolean> } | null = null;
+  const databaseUrl = merged["DATABASE_URL"];
+  if (databaseUrl) {
+    const sql = createSql({ connectionString: databaseUrl, maxConnections: 20, statementTimeoutMs: 5000 });
+    const pgUsage = new PgUsageStore(sql);
+    keys = new PgKeyStore(sql);
+    usage = pgUsage;
+    db = pgUsage;
+  }
   const registry = createDefaultRegistry();
   const redisClient = getRedis(merged["REDIS_URL"]);
   if (!redisClient && (merged["NODE_ENV"] ?? "development") === "production") {
@@ -90,10 +101,14 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
       }
     }
     const healthy = Object.values(results).filter((v) => v === "ok");
-    if (healthy.length === 0) {
-      return c.json({ ready: false, providers: results }, 503);
+    let dbStatus: string | null = null;
+    if (db) {
+      dbStatus = (await db.ping()) ? "ok" : "fail";
     }
-    return c.json({ ready: true, providers: results });
+    if (healthy.length === 0 || dbStatus === "fail") {
+      return c.json({ ready: false, providers: results, db: dbStatus ?? "unconfigured" }, 503);
+    }
+    return c.json({ ready: true, providers: results, db: dbStatus ?? "unconfigured" });
   });
   app.get("/metrics", (c) => {
     const token = merged["METRICS_TOKEN"];
@@ -121,5 +136,5 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   guarded.route("/", routingRoutes(routing, registry));
   app.route("/v1", guarded);
 
-  return { app, keys, usage, routing, plans, webhooks, notify };
+  return { app, keys, usage, routing, plans, webhooks, notify, db };
 }
