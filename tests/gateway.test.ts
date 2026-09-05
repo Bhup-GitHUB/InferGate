@@ -168,6 +168,30 @@ describe("gateway", () => {
     expect(cross.status).toBe(200);
   });
 
+  test("routing health reports circuits", async () => {
+    const { app, publicKey } = await setup();
+    const res = await app.request("/v1/routing/health", { headers: { authorization: `Bearer ${publicKey}` } });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.providers.length).toBe(3);
+  });
+
+  test("failed provider is routed around", async () => {
+    const { app, publicKey, routing } = await setup();
+    routing.reportFailure("openai");
+    routing.reportFailure("openai");
+    routing.reportFailure("openai");
+    routing.reportFailure("openai");
+    routing.reportFailure("openai");
+    expect(routing.circuitState("openai")).toBe("open");
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: "auto", messages: [{ role: "user", content: "route around" }] }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-infergate-provider")).not.toBe("openai");
+  });
   test("usage summary reflects traffic", async () => {
     const { app, publicKey } = await setup();
     await app.request("/v1/chat/completions", {
