@@ -1,0 +1,35 @@
+export interface GatewayConfig {
+  port: number;
+  pepper: string;
+  pepperVersion: number;
+  rateLimitPerMinute: number;
+  rateLimitFailOpen: boolean;
+  streamIdleTimeoutMs: number;
+  streamMaxDurationMs: number;
+  bodyLimitBytes: number;
+  providerAllowlist: string[];
+  allowedOrigins: string[];
+}
+
+export function loadConfig(env: Record<string, string | undefined>): GatewayConfig {
+  const nodeEnv = env["NODE_ENV"] ?? "development";
+  let pepper = env["API_KEY_PEPPER"];
+  if (!pepper) {
+    if (nodeEnv === "production") {
+      throw new Error("API_KEY_PEPPER is required in production");
+    }
+    pepper = "dev-pepper-change-in-production";
+  }
+  return {
+    port: Number(env["PORT"] ?? "3000"),
+    pepper,
+    pepperVersion: Number(env["PEPPER_VERSION"] ?? "1"),
+    rateLimitPerMinute: Number(env["RATE_LIMIT_PER_MINUTE"] ?? "120"),
+    rateLimitFailOpen: (env["RATE_LIMIT_FAIL_OPEN"] ?? "false") === "true",
+    streamIdleTimeoutMs: Number(env["STREAM_IDLE_TIMEOUT_MS"] ?? "60000"),
+    streamMaxDurationMs: Number(env["STREAM_MAX_DURATION_MS"] ?? "300000"),
+    bodyLimitBytes: Number(env["BODY_LIMIT_BYTES"] ?? String(1024 * 1024)),
+    providerAllowlist: (env["PROVIDER_ALLOWLIST"] ?? "api.openai.com,api.anthropic.com,localhost").split(","),
+    allowedOrigins: (env["ALLOWED_ORIGINS"] ?? "http://localhost:3001").split(","),
+  };
+}
