@@ -12,7 +12,8 @@
       "@infergate/providers": ["./packages/providers/src/index.ts"],
       "@infergate/db": ["./packages/db/src/index.ts"],
       "@infergate/ratelimit": ["./packages/ratelimit/src/index.ts"],
-      "@infergate/otel": ["./packages/otel/src/index.ts"]
+      "@infergate/otel": ["./packages/otel/src/index.ts"],
+      "@infergate/routing": ["./packages/routing/src/index.ts"]
     }
   },
   "include": ["apps/**/src", "packages/**/src", "services/**/src", "tests"]

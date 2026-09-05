@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { createRateLimiter } from "@infergate/ratelimit";
 import { renderPrometheus } from "@infergate/otel";
 import { createDefaultRegistry } from "@infergate/providers";
+import { RoutingEngine, type RoutingStrategy } from "@infergate/routing";
 import { loadConfig } from "./lib/config";
 import type { AppEnv } from "./lib/env";
 import { MemoryKeyStore, MemoryUsageStore } from "./lib/store";
@@ -14,11 +15,13 @@ import { chatRoutes } from "./routes/v1/chat";
 import { modelRoutes } from "./routes/v1/models";
 import { keyRoutes } from "./routes/v1/keys";
 import { usageRoutes } from "./routes/v1/usage";
+import { routingRoutes } from "./routes/v1/routing";
 
 export interface AppHandles {
   app: Hono<AppEnv>;
   keys: MemoryKeyStore;
   usage: MemoryUsageStore;
+  routing: RoutingEngine;
 }
 
 export function createApp(env: Record<string, string | undefined> = {}): AppHandles {
@@ -27,6 +30,20 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   const keys = new MemoryKeyStore();
   const usage = new MemoryUsageStore();
   const registry = createDefaultRegistry();
+  const routing = new RoutingEngine({
+    failureThreshold: config.breakerThreshold,
+    cooldownMs: config.breakerCooldownMs,
+    backoffBaseMs: 50,
+  });
+  const strategies: RoutingStrategy[] = ["cost", "latency", "availability", "weighted", "priority"];
+  routing.setDefaultStrategy(
+    strategies.includes(config.defaultStrategy as RoutingStrategy)
+      ? (config.defaultStrategy as RoutingStrategy)
+      : "availability",
+  );
+  routing.registerProvider("openai", { costPer1k: 0.0015, aliases: ["gpt-4o-mini", "gpt-4o", "auto"] });
+  routing.registerProvider("anthropic", { costPer1k: 0.0024, aliases: ["claude-3-5-sonnet", "claude-3-haiku", "auto"] });
+  routing.registerProvider("local-vllm", { costPer1k: 0.0002, aliases: ["llama-3-8b", "mistral-7b", "auto"] });
   const limiter = createRateLimiter(merged["REDIS_URL"], {
     capacity: config.rateLimitPerMinute,
     refillPerMinute: config.rateLimitPerMinute,
@@ -67,11 +84,12 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   const guarded = new Hono<AppEnv>();
   guarded.use("*", authMiddleware(keys, peppers));
   guarded.use("*", rateLimitMiddleware(limiter, config.rateLimitFailOpen));
-  guarded.route("/", chatRoutes({ registry, usage, config }));
+  guarded.route("/", chatRoutes({ registry, routing, usage, config }));
   guarded.route("/", modelRoutes(registry));
   guarded.route("/", keyRoutes({ keys, config }));
   guarded.route("/", usageRoutes(usage));
+  guarded.route("/", routingRoutes(routing, registry));
   app.route("/v1", guarded);
 
-  return { app, keys, usage };
+  return { app, keys, usage, routing };
 }

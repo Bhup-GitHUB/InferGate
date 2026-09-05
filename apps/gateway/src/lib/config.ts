@@ -9,6 +9,10 @@ export interface GatewayConfig {
   bodyLimitBytes: number;
   providerAllowlist: string[];
   allowedOrigins: string[];
+  defaultStrategy: string;
+  breakerThreshold: number;
+  breakerCooldownMs: number;
+  attemptTimeoutMs: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined>): GatewayConfig {
@@ -31,5 +35,9 @@ export function loadConfig(env: Record<string, string | undefined>): GatewayConf
     bodyLimitBytes: Number(env["BODY_LIMIT_BYTES"] ?? String(1024 * 1024)),
     providerAllowlist: (env["PROVIDER_ALLOWLIST"] ?? "api.openai.com,api.anthropic.com,localhost").split(","),
     allowedOrigins: (env["ALLOWED_ORIGINS"] ?? "http://localhost:3001").split(","),
+    defaultStrategy: env["DEFAULT_STRATEGY"] ?? "availability",
+    breakerThreshold: Number(env["BREAKER_THRESHOLD"] ?? "5"),
+    breakerCooldownMs: Number(env["BREAKER_COOLDOWN_MS"] ?? "30000"),
+    attemptTimeoutMs: Number(env["ATTEMPT_TIMEOUT_MS"] ?? "30000"),
   };
 }
