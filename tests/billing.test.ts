@@ -3,7 +3,7 @@ import { buildInvoice, capsFor, checkQuota, monthKey, monthWindow, rollupDaily }
 import { generateKey } from "@infergate/auth";
 import { createApp } from "../apps/gateway/src/app";
 
-const PEPPER = "billing-pepper";
+const PEPPER = "billing-test-pepper-01";
 
 describe("billing", () => {
   test("quota allows under caps denies over", () => {
