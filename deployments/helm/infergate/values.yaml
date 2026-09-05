@@ -19,8 +19,8 @@ env:
   breakerCooldownMs: "30000"
   allowedOrigins: https://app.infergate.ai
 secrets:
-  apiKeyPepper: CHANGEME
-  databaseUrl: CHANGEME
+  apiKeyPepper: ""
+  databaseUrl: ""
   redisUrl: ""
 postgresql:
   enabled: true

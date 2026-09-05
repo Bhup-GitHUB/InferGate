@@ -3,7 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { createRateLimiter } from "@infergate/ratelimit";
 import { getRedis, RedisTokenBucket } from "@infergate/cache";
-import { renderPrometheus } from "@infergate/otel";
+import { renderPrometheus, structuredLog } from "@infergate/otel";
 import { createDefaultRegistry } from "@infergate/providers";
 import { RoutingEngine, type RoutingStrategy } from "@infergate/routing";
 import { loadConfig } from "./lib/config";
@@ -37,6 +37,9 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   const plans = new OrgPlans();
   const registry = createDefaultRegistry();
   const redisClient = getRedis(merged["REDIS_URL"]);
+  if (!redisClient && (merged["NODE_ENV"] ?? "development") === "production") {
+    console.log(structuredLog({ level: "warn", msg: "redis_unset_rate_limits_local_only" }));
+  }
   const routing = new RoutingEngine({
     failureThreshold: config.breakerThreshold,
     cooldownMs: config.breakerCooldownMs,
@@ -86,6 +89,13 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
     return c.json({ ready: true, providers: results });
   });
   app.get("/metrics", (c) => {
+    const token = merged["METRICS_TOKEN"];
+    if (token) {
+      const header = c.req.header("authorization") ?? "";
+      if (header !== `Bearer ${token}`) {
+        return c.text("forbidden", 403);
+      }
+    }
     c.header("Content-Type", "text/plain; version=0.0.4");
     return c.text(renderPrometheus());
   });
