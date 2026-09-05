@@ -8,7 +8,7 @@
 - [ ] Code review + testing + security review + commit
 
 ## Phase 2 — Routing engine
-- [ ] Cost/latency/availability/weighted/priority routing, health checks, circuit breakers, retries
+- [x] Cost/latency/availability/weighted/priority routing, health checks, circuit breakers, retries
 
 ## Phase 3 — Billing
 - [ ] Token tracking, quotas, usage APIs, aggregation, idempotency
