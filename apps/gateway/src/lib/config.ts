@@ -16,13 +16,9 @@ export interface GatewayConfig {
 }
 
 export function loadConfig(env: Record<string, string | undefined>): GatewayConfig {
-  const nodeEnv = env["NODE_ENV"] ?? "development";
-  let pepper = env["API_KEY_PEPPER"];
-  if (!pepper) {
-    if (nodeEnv === "production") {
-      throw new Error("API_KEY_PEPPER is required in production");
-    }
-    pepper = "dev-pepper-change-in-production";
+  const pepper = env["API_KEY_PEPPER"];
+  if (!pepper || pepper.length < 16) {
+    throw new Error("API_KEY_PEPPER must be set to a secret of at least 16 characters");
   }
   return {
     port: Number(env["PORT"] ?? "3000"),
