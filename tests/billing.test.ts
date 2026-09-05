@@ -31,6 +31,18 @@ describe("billing", () => {
     expect(invoice.status).toBe("draft");
   });
 
+  test("org plan upgrades quota", async () => {
+    const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "1000" });
+    const g = generateKey("org_plan", ["chat:write", "keys:write", "billing:read"], PEPPER, 1);
+    await handles.keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...g.record });
+    const headers = { authorization: `Bearer ${g.publicKey}`, "content-type": "application/json" };
+    const bad = await handles.app.request("/v1/org/plan", { method: "POST", headers, body: JSON.stringify({ plan: "ultra" }) });
+    expect(bad.status).toBe(400);
+    const ok = await handles.app.request("/v1/org/plan", { method: "POST", headers, body: JSON.stringify({ plan: "enterprise" }) });
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).plan).toBe("enterprise");
+  });
+
   test("gateway blocks over-quota org with 402", async () => {
     const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "1000" });
     const g = generateKey("org_broke", ["chat:write", "billing:read"], PEPPER, 1);

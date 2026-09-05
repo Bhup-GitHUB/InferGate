@@ -13,6 +13,10 @@ Request:
 { "model": "auto", "messages": [{"role":"user","content":"Explain Kubernetes"}], "stream": true, "max_tokens": 512, "temperature": 0.7 }
 ```
 
+Extension fields (stripped before the provider call): `idempotency_key`
+(409 on replay, scoped per org), `cache_ttl` (1..3600s, non-stream only,
+`x-infergate-cache: HIT|MISS`, cache hits bill $0 but count quota tokens).
+
 Non-stream response: `{ "id": "chatcmpl-...", "object": "chat.completion", "model": "...", "choices": [{"message": {"role":"assistant","content":"..."}, "finish_reason":"stop", "index":0}], "usage": {"prompt_tokens":N,"completion_tokens":M,"total_tokens":T} }`
 
 Stream: `Content-Type: text/event-stream`, frames `data: {"id":...,"choices":[{"delta":{"content":"..."},"index":0}]}` … `data: [DONE]`.
@@ -28,6 +32,38 @@ Headers: `x-infergate-provider`, `x-infergate-retry`, `x-request-id`.
 ### POST /v1/keys/:id/rotate
 
 Creates successor key, 24h dual-accept grace. Requires `keys:write`.
+
+### POST /v1/keys
+
+Mints a key for the caller org. Requested scopes are intersected with the
+caller scopes (no escalation). Returns the secret once. Requires `keys:write`.
+
+### GET /v1/usage · GET /v1/usage/daily?days=7 · GET /v1/requests?limit=25
+
+Usage summary, daily rollup (1..90 days), recent request feed.
+Require `usage:read`.
+
+### GET /v1/billing/summary
+
+Plan, UTC-month spend/tokens vs caps, invoice draft. Requires `billing:read`.
+Over-quota chat requests get 402 `quota_exceeded` (and emit the webhook).
+
+### GET /v1/routing/health
+
+Per-provider circuit state, EWMA latency, error rate. Requires `models:read`.
+
+### Webhooks
+
+`POST /v1/webhooks {url, secret, events}` · `GET /v1/webhooks` (secrets
+never returned) · `DELETE /v1/webhooks/:id`. Require `keys:write`. Events:
+`quota.exceeded`, `provider.outage` (+`quota.warning` reserved), HMAC-SHA256
+in `x-infergate-signature`, retries at 1s/5s/30s.
+
+### Scheduler
+
+`POST /v1/scheduler/placement {nodes, models}` → bin-packed placements +
+utilization. `GET /v1/scheduler/demo` → canned A100x4 + H100x8 fleet.
+Require `models:read`.
 
 ## Validation
 
