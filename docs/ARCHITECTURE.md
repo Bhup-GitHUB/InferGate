@@ -1,5 +1,13 @@
 # Architecture
 
+## Status
+
+Milestone 1 (this tree): single-node gateway with in-memory key/usage/plan stores,
+per-process routing health, and mock providers. PostgreSQL schema + migrations,
+Redis coordination interfaces, workers, and Helm charts exist; PG/Redis-backed
+stores are the next milestone (see FINAL_REVIEW.md for the honest gap list).
+Deploy more than one pod only after that migration.
+
 ## Overview
 
 InferGate is a stateless OpenAI-compatible inference gateway.

@@ -83,10 +83,14 @@ export class MemoryKeyStore implements KeyStore {
 
 export class MemoryUsageStore implements UsageStore {
   private records: UsageRecord[] = [];
+  private static readonly MAX_ROWS = 50000;
 
   async insert(record: Omit<UsageRecord, "id" | "createdAt">): Promise<UsageRecord> {
     const row: UsageRecord = { ...record, id: crypto.randomUUID(), createdAt: Date.now() };
     this.records.push(row);
+    if (this.records.length > MemoryUsageStore.MAX_ROWS) {
+      this.records.splice(0, this.records.length - MemoryUsageStore.MAX_ROWS);
+    }
     return row;
   }
 
