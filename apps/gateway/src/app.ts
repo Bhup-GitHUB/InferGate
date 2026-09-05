@@ -18,6 +18,7 @@ import { keyRoutes } from "./routes/v1/keys";
 import { usageRoutes } from "./routes/v1/usage";
 import { routingRoutes } from "./routes/v1/routing";
 import { billingRoutes } from "./routes/v1/billing";
+import { schedulerRoutes } from "./routes/v1/scheduler";
 import { quotaMiddleware } from "./middleware/quota";
 import { OrgPlans } from "./lib/store";
 
@@ -82,8 +83,8 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
         results[info.id] = "fail";
       }
     }
-    const failed = Object.values(results).filter((v) => v !== "ok");
-    if (failed.length > 0) {
+    const healthy = Object.values(results).filter((v) => v === "ok");
+    if (healthy.length === 0) {
       return c.json({ ready: false, providers: results }, 503);
     }
     return c.json({ ready: true, providers: results });
@@ -109,6 +110,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   guarded.route("/", keyRoutes({ keys, config }));
   guarded.route("/", usageRoutes(usage));
   guarded.route("/", billingRoutes({ usage, plans }));
+  guarded.route("/", schedulerRoutes());
   guarded.route("/", routingRoutes(routing, registry));
   app.route("/v1", guarded);
 
