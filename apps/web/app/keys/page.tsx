@@ -8,6 +8,7 @@ interface Row {
   id: string;
   prefix: string;
   secret: string | null;
+  used?: string | null;
 }
 
 export default function Keys(): React.ReactElement {
@@ -29,7 +30,7 @@ export default function Keys(): React.ReactElement {
       return;
     }
     listKeys(getKey())
-      .then((r) => setRows(r.data.map((k) => ({ id: k.id, prefix: k.prefix, secret: null }))))
+      .then((r) => setRows(r.data.map((k) => ({ id: k.id, prefix: k.prefix, secret: null, used: k.last_used_at }))))
       .catch(() => setError("Listing needs keys:write scope."));
   }, [ready]);
 
@@ -116,7 +117,12 @@ export default function Keys(): React.ReactElement {
         {rows.map((r) => (
           <div key={r.id} className="border-t border-edge py-3.5 first:border-t-0">
             <div className="flex items-center justify-between">
-              <span className="font-mono">…{r.prefix}</span>
+              <div>
+                <span className="font-mono">…{r.prefix}</span>
+                <div className="mt-1 font-mono text-xs text-fog">
+                  {r.used ? `last used ${r.used.slice(0, 19).replace("T", " ")}` : "never used"}
+                </div>
+              </div>
               <div className="flex gap-2">
                 <button
                   className="rounded-xl border border-edge bg-panel2 px-4 py-2 text-sm font-semibold transition hover:-translate-y-px"
