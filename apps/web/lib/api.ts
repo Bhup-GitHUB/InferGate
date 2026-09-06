@@ -191,8 +191,11 @@ export async function streamChat(
       }
       try {
         const payload = JSON.parse(data);
-        if (event === "infergate.route" && payload.provider) {
-          onRoute(payload.provider);
+        if (event === "infergate.route") {
+          const provider = (payload.infergate?.provider ?? payload.provider) as string | undefined;
+          if (provider) {
+            onRoute(provider);
+          }
           continue;
         }
         const token = payload.choices?.[0]?.delta?.content as string | undefined;

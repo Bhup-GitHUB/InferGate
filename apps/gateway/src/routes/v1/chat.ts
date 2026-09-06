@@ -373,7 +373,14 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         }
         await stream.writeSSE({
           event: "infergate.route",
-          data: JSON.stringify({ provider: winner, retry: retries, model: streamModel }),
+          data: JSON.stringify({
+            id: completionId,
+            object: "chat.completion.chunk",
+            created,
+            model: streamModel,
+            choices: [{ index: 0, delta: {}, finish_reason: null }],
+            infergate: { provider: winner, retry: retries, model: streamModel },
+          }),
         });
         const attemptStarted = Date.now();
         let interrupted = false;
