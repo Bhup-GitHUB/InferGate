@@ -96,6 +96,12 @@ export class CachedKeyStore implements KeyStore {
       return;
     }
     this.touched.set(id, now);
+    if (this.touched.size > 5000) {
+      const first = this.touched.keys().next().value;
+      if (first) {
+        this.touched.delete(first);
+      }
+    }
     await this.inner.touch(id, now).catch(() => undefined);
   }
 

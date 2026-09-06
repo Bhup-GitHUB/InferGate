@@ -31,6 +31,7 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
         id: k.id,
         prefix: k.prefix,
         scopes: k.scopes,
+        tier: k.tier ?? "standard",
         revoked: k.revokedAt !== null && k.revokedAt <= Date.now(),
         expires_at: k.expiresAt === null ? null : new Date(k.expiresAt).toISOString(),
         last_used_at: k.lastUsedAt === null || k.lastUsedAt === undefined ? null : new Date(k.lastUsedAt).toISOString(),
@@ -114,7 +115,7 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
       return c.json(errorBody("Key not found", "invalid_request_error", "key_not_found"), 404);
     }
     const now = Date.now();
-    const generated = generateKey(existing.orgId, existing.scopes, deps.config.pepper, deps.config.pepperVersion);
+    const generated = generateKey(existing.orgId, existing.scopes, deps.config.pepper, deps.config.pepperVersion, existing.tier ?? "standard");
     const successor: StoredKey = {
       id: crypto.randomUUID(),
       createdAt: now,

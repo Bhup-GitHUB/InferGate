@@ -141,6 +141,12 @@ export default function Keys(): React.ReactElement {
             {r.secret && (
               <div className="mt-2.5 break-all rounded-xl border border-dashed border-[#3a3a44] bg-[#08080a] p-3.5 font-mono text-[13px] text-acid">
                 {r.secret}
+                <button
+                  className="mt-2 block rounded-lg border border-edge px-3 py-1 text-xs font-semibold text-fog"
+                  onClick={() => setRows((rows) => rows.map((x) => (x.id === r.id ? { ...x, secret: null } : x)))}
+                >
+                  Hide secret
+                </button>
               </div>
             )}
           </div>
