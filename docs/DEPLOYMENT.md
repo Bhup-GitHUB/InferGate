@@ -57,3 +57,10 @@ Stateless gateway: `helm rollback` or redeploy previous image. Migrations
 are additive (`0001`..`0003`); never roll back `schema_migrations` rows.
 Pepper rotation: deploy new pepper as `PEPPER_VERSION`+1 while keeping the
 old value accepted (rotation-tolerant verify), then drop the old one.
+
+## Shutdown
+
+`SIGTERM`/`SIGINT` flips the gateway to draining: `/healthz` goes 503
+(except the probe path itself), new traffic sheds, and the process exits
+when in-flight requests finish or after 25s. The chart adds a 5s
+`preStop` sleep so endpoints deregister first.
