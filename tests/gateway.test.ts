@@ -43,6 +43,29 @@ describe("gateway", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("admin can kill and revive a model", async () => {
+    const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "1000" });
+    const admin = generateKey("org_ops", ["chat:write", "models:read", "admin:write"], PEPPER, 1);
+    await handles.keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...admin.record });
+    const headers = { authorization: `Bearer ${admin.publicKey}`, "content-type": "application/json" };
+    const off = await handles.app.request("/v1/models/llama-3-8b/disable", { method: "POST", headers });
+    expect(off.status).toBe(200);
+    const chat = await handles.app.request("/v1/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model: "llama-3-8b", messages: [{ role: "user", content: "hi" }] }),
+    });
+    expect(chat.status).toBe(400);
+    const on = await handles.app.request("/v1/models/llama-3-8b/enable", { method: "POST", headers });
+    expect(on.status).toBe(200);
+    const chat2 = await handles.app.request("/v1/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model: "llama-3-8b", messages: [{ role: "user", content: "hi" }] }),
+    });
+    expect(chat2.status).toBe(200);
+  });
+
   test("successful auth touches last used", async () => {
     const { app, publicKey, keyId, keys } = await setup();
     expect((await keys.findById(keyId))?.lastUsedAt).toBeNull();

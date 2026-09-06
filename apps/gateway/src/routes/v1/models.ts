@@ -3,7 +3,6 @@ import { errorBody } from "@infergate/schemas";
 import type { ProviderRegistry } from "@infergate/providers";
 import type { AppEnv } from "../../lib/env";
 import { requireScope } from "../../middleware/auth";
-
 export function modelRoutes(registry: ProviderRegistry): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
@@ -31,6 +30,28 @@ export function modelRoutes(registry: ProviderRegistry): Hono<AppEnv> {
       pricing: { input_per_1k: model.inputPricePer1k, output_per_1k: model.outputPricePer1k },
       context_window: model.contextWindow,
     });
+  });
+
+  app.post("/models/:id/disable", (c) => {
+    if (!requireScope(c, "admin:write")) {
+      return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
+    }
+    const ok = registry.setModelEnabled(c.req.param("id"), false);
+    if (!ok) {
+      return c.json(errorBody("Model not found", "invalid_request_error", "model_not_found"), 404);
+    }
+    return c.json({ id: c.req.param("id"), enabled: false });
+  });
+
+  app.post("/models/:id/enable", (c) => {
+    if (!requireScope(c, "admin:write")) {
+      return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
+    }
+    const ok = registry.setModelEnabled(c.req.param("id"), true);
+    if (!ok) {
+      return c.json(errorBody("Model not found", "invalid_request_error", "model_not_found"), 404);
+    }
+    return c.json({ id: c.req.param("id"), enabled: true });
   });
 
   return app;

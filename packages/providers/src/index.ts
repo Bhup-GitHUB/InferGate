@@ -53,6 +53,15 @@ export class ProviderRegistry {
     return this.models.filter((m) => m.enabled);
   }
 
+  setModelEnabled(id: string, enabled: boolean): boolean {
+    const model = this.models.find((m) => m.id === id);
+    if (!model) {
+      return false;
+    }
+    model.enabled = enabled;
+    return true;
+  }
+
   resolveModel(alias: string): ModelEntry | undefined {
     if (alias === "auto") {
       return this.models.find((m) => m.id === "gpt-4o-mini");
