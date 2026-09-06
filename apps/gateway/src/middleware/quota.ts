@@ -12,6 +12,25 @@ export interface QuotaDeps {
 }
 
 const SPEND_PREFIXES = ["/v1/chat/"];
+const USAGE_TTL_MS = 5000;
+const usageCache = new Map<string, { used: { tokens: number; spendUsd: number }; at: number }>();
+
+async function cachedUsage(usage: UsageStore, orgId: string, start: number): Promise<{ tokens: number; spendUsd: number }> {
+  const now = Date.now();
+  const hit = usageCache.get(orgId);
+  if (hit && now - hit.at < USAGE_TTL_MS) {
+    return hit.used;
+  }
+  const used = await usage.periodUsage(orgId, start);
+  usageCache.set(orgId, { used, at: now });
+  if (usageCache.size > 1000) {
+    const first = usageCache.keys().next().value;
+    if (first) {
+      usageCache.delete(first);
+    }
+  }
+  return used;
+}
 
 export function quotaMiddleware(deps: QuotaDeps) {
   return async (c: Context<AppEnv>, next: Next) => {
@@ -26,7 +45,7 @@ export function quotaMiddleware(deps: QuotaDeps) {
     let used = { tokens: 0, spendUsd: 0 };
     try {
       const { start } = monthWindow(now);
-      used = await deps.usage.periodUsage(auth.orgId, start);
+      used = await cachedUsage(deps.usage, auth.orgId, start);
     } catch {
       return c.json(
         { error: { message: "Billing unavailable", type: "quota_error", code: "billing_unavailable" } },
