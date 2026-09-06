@@ -4,6 +4,10 @@
 > row instead of losing the request. Retry with the same idempotency key
 > returns 409 while fresh (<5min, treated as in-flight); verified live:
 > first request 200, replay 409.
+>
+> Update (replay): completed non-stream requests replay the original 200
+> (hash-bound, `x-infergate-replay: true`) with a single DB row — verified
+> live against Postgres.
 
 Date: 2026-09-05 (UTC)
 Host: macOS, Bun 1.3.5
