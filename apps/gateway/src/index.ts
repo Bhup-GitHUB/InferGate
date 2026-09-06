@@ -4,6 +4,9 @@ import { structuredLog } from "@infergate/otel";
 import { createApp } from "./app";
 import { loadConfig } from "./lib/config";
 import { beginDrain, inflightCount } from "./middleware/tracing";
+import { startTelemetry, stopTelemetry } from "./lib/telemetry";
+
+startTelemetry();
 
 const config = loadConfig(process.env as Record<string, string | undefined>);
 const { app, keys, db } = createApp();
@@ -40,8 +43,12 @@ function shutdown(signal: string): void {
   const deadline = Date.now() + 25000;
   const wait = (): void => {
     if (inflightCount() === 0 || Date.now() >= deadline) {
-      console.log(structuredLog({ level: "info", msg: "shutdown_done", inflight: inflightCount() }));
-      process.exit(0);
+      stopTelemetry()
+        .catch(() => undefined)
+        .finally(() => {
+          console.log(structuredLog({ level: "info", msg: "shutdown_done", inflight: inflightCount() }));
+          process.exit(0);
+        });
     } else {
       setTimeout(wait, 250);
     }

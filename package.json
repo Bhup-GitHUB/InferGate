@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
+    "@opentelemetry/sdk-node": "^0.222.0",
     "hono": "^4.13.7",
     "ioredis": "^6.0.0",
     "next": "15.5.4",
