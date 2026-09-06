@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { KeyGate } from "../../components/KeyGate";
 import { getKey, listModels, streamChat, type ChatMessage, type ModelEntry } from "../../lib/api";
 
@@ -12,6 +13,15 @@ interface Turn {
 }
 
 export default function Playground(): React.ReactElement {
+  return (
+    <Suspense>
+      <PlaygroundInner />
+    </Suspense>
+  );
+}
+
+function PlaygroundInner(): React.ReactElement {
+  const search = useSearchParams();
   const [ready, setReady] = useState(false);
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [model, setModel] = useState("auto");
@@ -25,6 +35,13 @@ export default function Playground(): React.ReactElement {
       setReady(true);
     }
   }, []);
+
+  useEffect(() => {
+    const wanted = search.get("model");
+    if (wanted) {
+      setModel(wanted);
+    }
+  }, [search]);
 
   useEffect(() => {
     if (!ready) {

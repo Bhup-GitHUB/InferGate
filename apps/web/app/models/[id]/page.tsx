@@ -74,7 +74,7 @@ export default function ModelDetail({ params }: { params: Promise<{ id: string }
             <div className="rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
               <div className="mb-2.5 text-xs uppercase tracking-[0.12em] text-fog">Try it</div>
               <Link
-                href="/playground"
+                href={`/playground?model=${encodeURIComponent(detail.id)}`}
                 className="inline-block rounded-xl border border-acid bg-acid px-4 py-2 text-sm font-bold text-black"
               >
                 Playground
