@@ -35,6 +35,7 @@ export interface StoredKey {
   pepperVersion: number;
   scopes: string[];
   tier: string;
+  lastUsedAt: number | null;
   expiresAt: number | null;
   rotatedFromId: string | null;
   revokedAt: number | null;
@@ -82,6 +83,7 @@ export function generateKey(orgId: string, scopes: string[], pepper: string, pep
       pepperVersion,
       scopes,
       tier,
+      lastUsedAt: null,
       expiresAt: null,
       rotatedFromId: null,
       revokedAt: null,

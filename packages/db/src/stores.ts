@@ -41,6 +41,7 @@ function keyFromRow(row: Record<string, unknown>): StoredKey {
     pepperVersion: row["pepper_version"] as number,
     scopes: row["scopes"] as string[],
     tier: (row["tier"] as string | null) ?? "standard",
+    lastUsedAt: toMs(row["last_used_at"] as Date | null),
     expiresAt: toMs(row["expires_at"] as Date | null),
     rotatedFromId: row["rotated_from_id"] as string | null,
     revokedAt: toMs(row["revoked_at"] as Date | null),
@@ -86,6 +87,10 @@ export class PgKeyStore implements KeyStore {
       VALUES (${key.id}, ${key.orgId}, ${key.prefix}, ${key.salt}, ${key.hashedSecret}, ${key.pepperVersion}, ${key.scopes}, ${key.tier ?? "standard"}, ${toTs(key.expiresAt)}, ${key.rotatedFromId}, ${toTs(key.revokedAt)}, ${toTs(key.createdAt) ?? new Date()})
       ON CONFLICT (id) DO UPDATE SET revoked_at = EXCLUDED.revoked_at, expires_at = EXCLUDED.expires_at
     `;
+  }
+
+  async touch(id: string, now: number): Promise<void> {
+    await this.sql`UPDATE api_keys SET last_used_at = ${toTs(now)} WHERE id = ${id}`;
   }
 
   async revoke(id: string, now: number): Promise<void> {

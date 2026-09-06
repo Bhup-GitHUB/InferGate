@@ -25,6 +25,7 @@ export interface KeyStore {
   save(key: StoredKey): Promise<void>;
   revoke(id: string, now: number): Promise<void>;
   scheduleRevoke(id: string, at: number): Promise<void>;
+  touch(id: string, now: number): Promise<void>;
 }
 
 export interface UsageStore {
@@ -92,6 +93,13 @@ export class MemoryKeyStore implements KeyStore {
     const key = this.byId.get(id);
     if (key) {
       key.revokedAt = at;
+    }
+  }
+
+  async touch(id: string, now: number): Promise<void> {
+    const key = this.byId.get(id);
+    if (key) {
+      key.lastUsedAt = now;
     }
   }
 }

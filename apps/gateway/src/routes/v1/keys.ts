@@ -33,6 +33,7 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
         scopes: k.scopes,
         revoked: k.revokedAt !== null && k.revokedAt <= Date.now(),
         expires_at: k.expiresAt === null ? null : new Date(k.expiresAt).toISOString(),
+        last_used_at: k.lastUsedAt === null || k.lastUsedAt === undefined ? null : new Date(k.lastUsedAt).toISOString(),
         created_at: new Date(k.createdAt).toISOString(),
       })),
     });

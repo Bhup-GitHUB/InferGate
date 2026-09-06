@@ -45,6 +45,7 @@ export const apiKeys = pgTable("api_keys", {
   pepperVersion: integer("pepper_version").notNull().default(1),
   scopes: text("scopes").array().notNull().default(["chat:write", "models:read"]),
   tier: text("tier").notNull().default("standard"),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   rotatedFromId: uuid("rotated_from_id"),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),

@@ -38,6 +38,13 @@ describe("gateway", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("successful auth touches last used", async () => {
+    const { app, publicKey, keyId, keys } = await setup();
+    expect((await keys.findById(keyId))?.lastUsedAt).toBeNull();
+    await app.request("/v1/models", { headers: { authorization: `Bearer ${publicKey}` } });
+    expect((await keys.findById(keyId))?.lastUsedAt).toBeGreaterThan(0);
+  });
+
   test("models list requires scope", async () => {
     const { app, publicKey } = await setup();
     const res = await app.request("/v1/models", { headers: { authorization: `Bearer ${publicKey}` } });

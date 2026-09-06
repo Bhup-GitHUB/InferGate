@@ -12,6 +12,7 @@ export class CachedKeyStore implements KeyStore {
   private inner: KeyStore;
   private redis: Redis | null;
   private local = new Map<string, { key: StoredKey; at: number }>();
+  private touched = new Map<string, number>();
 
   constructor(inner: KeyStore, redis: Redis | null) {
     this.inner = inner;
@@ -87,6 +88,15 @@ export class CachedKeyStore implements KeyStore {
     if (existing && at <= Date.now()) {
       await this.invalidate(existing.prefix);
     }
+  }
+
+  async touch(id: string, now: number): Promise<void> {
+    const last = this.touched.get(id) ?? 0;
+    if (now - last < 60000) {
+      return;
+    }
+    this.touched.set(id, now);
+    await this.inner.touch(id, now).catch(() => undefined);
   }
 
   async invalidate(prefix: string): Promise<void> {
