@@ -42,6 +42,8 @@ helm install infergate deployments/helm/infergate \
   --set secrets.redisUrl="$REDIS_URL"
 ```
 
+Verified: image builds and boots (`/healthz` 200 in-container).
+
 ## Smoke checks
 
 ```bash
