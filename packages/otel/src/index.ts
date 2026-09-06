@@ -1,3 +1,5 @@
+import { context, trace, type Span as OtelSpan } from "@opentelemetry/api";
+
 export interface Span {
   setAttribute(key: string, value: string | number): void;
   recordError(message: string): void;
@@ -24,20 +26,27 @@ function newMetrics(): Metrics {
 
 export const metrics: Metrics = newMetrics();
 
-class NoopSpan implements Span {
-  private attrs = new Map<string, string | number>();
+const tracer = trace.getTracer("infergate-gateway", "0.1.0");
+
+class OtelSpanWrapper implements Span {
+  constructor(private span: OtelSpan) {}
+
   setAttribute(key: string, value: string | number): void {
-    this.attrs.set(key, value);
+    this.span.setAttribute(key, value);
   }
-  recordError(_message: string): void {
-    void _message;
+
+  recordError(message: string): void {
+    this.span.recordException(new Error(message));
   }
-  end(): void {}
+
+  end(): void {
+    this.span.end();
+  }
 }
 
-export function startSpan(_name: string): Span {
-  void _name;
-  return new NoopSpan();
+export function startSpan(name: string): Span {
+  const span = tracer.startSpan(name, undefined, context.active());
+  return new OtelSpanWrapper(span);
 }
 
 export function observeRequest(provider: string, model: string, latencyMs: number, inputTokens: number, outputTokens: number, costUsd: number): void {
@@ -82,5 +91,10 @@ export function renderPrometheus(): string {
 }
 
 export function structuredLog(fields: Record<string, unknown>): string {
+  const span = trace.getSpan(context.active());
+  const traceId = span ? span.spanContext().traceId : undefined;
+  if (traceId && traceId !== "00000000000000000000000000000000") {
+    return JSON.stringify({ ts: new Date().toISOString(), traceId, ...fields });
+  }
   return JSON.stringify({ ts: new Date().toISOString(), ...fields });
 }

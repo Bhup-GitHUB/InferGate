@@ -69,7 +69,7 @@ export default function Billing(): React.ReactElement {
                     await setPlan(getKey(), p);
                     setPlanTick((t) => t + 1);
                   } catch {
-                    setError("Plan change needs keys:write scope.");
+                    setError("Plan change needs admin:write scope.");
                   }
                 }}
               >
