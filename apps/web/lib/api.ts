@@ -224,6 +224,14 @@ export async function listKeys(key: string): Promise<{ data: { id: string; prefi
   return res.json();
 }
 
+export async function fetchOrg(key: string): Promise<{ org_id: string; plan: string }> {
+  const res = await authed("/v1/org", key);
+  if (!res.ok) {
+    throw new Error(`org ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function setPlan(key: string, plan: string): Promise<{ plan: string }> {  const res = await authed("/v1/org/plan", key, { method: "POST", body: JSON.stringify({ plan }) });
   if (!res.ok) {
     throw new Error(`plan ${res.status}`);

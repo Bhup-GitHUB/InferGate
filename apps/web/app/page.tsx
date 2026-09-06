@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { KeyGate } from "../components/KeyGate";
-import { fetchBilling, fetchDaily, fetchRoutingHealth, fetchUsage, getKey, GATEWAY_URL } from "../lib/api";
+import { fetchBilling, fetchDaily, fetchOrg, fetchRoutingHealth, fetchUsage, getKey, GATEWAY_URL } from "../lib/api";
 
 interface Daily {
   date: string;
@@ -17,6 +17,7 @@ export default function Overview(): React.ReactElement {
   const [daily, setDaily] = useState<Daily[]>([]);
   const [providers, setProviders] = useState<{ id: string; circuit: string; kind: string; ewmaLatencyMs: number; errorRate: number }[]>([]);
   const [error, setError] = useState("");
+  const [orgId, setOrgId] = useState("");
   const [demoBusy, setDemoBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -25,16 +26,20 @@ export default function Overview(): React.ReactElement {
       return;
     }
     try {
-      const [u, b, d, r] = await Promise.all([
+      const [u, b, d, r, o] = await Promise.all([
         fetchUsage(key),
         fetchBilling(key).catch(() => null),
         fetchDaily(key, 14),
         fetchRoutingHealth(key),
+        fetchOrg(key).catch(() => null),
       ]);
       setUsage(u);
       setBilling(b);
       setDaily(d.days);
       setProviders(r.providers);
+      if (o) {
+        setOrgId(o.org_id);
+      }
       setError("");
     } catch {
       setError("Gateway unreachable or key invalid. Check the key and gateway URL.");
@@ -84,7 +89,9 @@ export default function Overview(): React.ReactElement {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Good evening, builder.</h1>
-          <p className="mb-8 mt-1.5 text-sm text-fog">Live traffic across every provider behind one OpenAI-compatible endpoint.</p>
+          <p className="mb-8 mt-1.5 font-mono text-xs text-fog">
+            {orgId === "" ? "Live traffic across every provider behind one OpenAI-compatible endpoint." : `org ${orgId.slice(0, 8)} · live traffic behind one OpenAI-compatible endpoint.`}
+          </p>
         </div>
         <button
           className="mb-8 rounded-xl border border-acid bg-acid px-5 py-2.5 text-sm font-bold text-black transition hover:-translate-y-px disabled:opacity-60"
