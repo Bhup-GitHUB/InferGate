@@ -86,6 +86,27 @@ describe("gateway", () => {
     expect(text).toContain("chat.completion.chunk");
   });
 
+  test("embeddings return deterministic vectors", async () => {
+    const { app, publicKey } = await setup();
+    const headers = { authorization: `Bearer ${publicKey}`, "content-type": "application/json" };
+    const first = await app.request("/v1/embeddings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model: "text-embedding-3-small", input: "hello world" }),
+    });
+    expect(first.status).toBe(200);
+    expect(first.headers.get("server-timing")).toContain("gateway");
+    const a = await first.json();
+    expect(a.data[0].embedding.length).toBe(64);
+    const second = await app.request("/v1/embeddings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model: "text-embedding-3-small", input: "hello world" }),
+    });
+    const b = await second.json();
+    expect(b.data[0].embedding).toEqual(a.data[0].embedding);
+  });
+
   test("auto resolves to serving provider model", async () => {
     const { app, publicKey } = await setup();
     const res = await app.request("/v1/chat/completions", {

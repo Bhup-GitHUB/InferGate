@@ -14,6 +14,7 @@ import { authMiddleware } from "./middleware/auth";
 import { rateLimitMiddleware } from "./middleware/ratelimit";
 import { tracingMiddleware } from "./middleware/tracing";
 import { chatRoutes } from "./routes/v1/chat";
+import { embeddingRoutes } from "./routes/v1/embeddings";
 import { modelRoutes } from "./routes/v1/models";
 import { keyRoutes } from "./routes/v1/keys";
 import { usageRoutes } from "./routes/v1/usage";
@@ -127,6 +128,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   guarded.use("*", rateLimitMiddleware(limiter, config.rateLimitFailOpen));
   guarded.use("*", quotaMiddleware({ usage, plans, webhooks, notify }));
   guarded.route("/", chatRoutes({ registry, routing, usage, config, redis: redisClient, webhooks, notify }));
+  guarded.route("/", embeddingRoutes());
   guarded.route("/", modelRoutes(registry));
   guarded.route("/", keyRoutes({ keys, config }));
   guarded.route("/", usageRoutes(usage));

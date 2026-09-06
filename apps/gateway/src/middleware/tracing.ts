@@ -19,5 +19,13 @@ export function tracingMiddleware() {
       latencyMs,
     });
     console.log(line);
+    try {
+      const contentType = c.res.headers.get("content-type") ?? "";
+      if (!contentType.includes("text/event-stream")) {
+        c.header("Server-Timing", `gateway;dur=${latencyMs}`);
+      }
+    } catch {
+      return;
+    }
   };
 }
