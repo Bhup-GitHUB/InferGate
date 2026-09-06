@@ -57,7 +57,11 @@ export function createOpenAICompatibleProvider(options: HttpProviderOptions): Pr
       const res = await withTimeout(
         fetch(`${options.baseUrl}/chat/completions`, {
           method: "POST",
-          headers: { authorization: `Bearer ${options.apiKey}`, "content-type": "application/json" },
+          headers: {
+            authorization: `Bearer ${options.apiKey}`,
+            "content-type": "application/json",
+            ...(req.requestId ? { "x-request-id": req.requestId } : {}),
+          },
           body: JSON.stringify({
             model: req.model,
             messages: req.messages,
@@ -97,7 +101,11 @@ export function createOpenAICompatibleProvider(options: HttpProviderOptions): Pr
       const res = await withTimeout(
         fetch(`${options.baseUrl}/chat/completions`, {
           method: "POST",
-          headers: { authorization: `Bearer ${options.apiKey}`, "content-type": "application/json" },
+          headers: {
+            authorization: `Bearer ${options.apiKey}`,
+            "content-type": "application/json",
+            ...(req.requestId ? { "x-request-id": req.requestId } : {}),
+          },
           body: JSON.stringify({
             model: req.model,
             messages: req.messages,
@@ -210,6 +218,7 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Prov
             "x-api-key": options.apiKey,
             "anthropic-version": options.anthropicVersion,
             "content-type": "application/json",
+            ...(req.requestId ? { "x-request-id": req.requestId } : {}),
           },
           body: JSON.stringify({
             model: req.model,
@@ -257,6 +266,7 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Prov
             "x-api-key": options.apiKey,
             "anthropic-version": options.anthropicVersion,
             "content-type": "application/json",
+            ...(req.requestId ? { "x-request-id": req.requestId } : {}),
           },
           body: JSON.stringify({
             model: req.model,

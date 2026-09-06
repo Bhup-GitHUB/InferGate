@@ -9,6 +9,7 @@ export interface InternalChatRequest {
   maxTokens?: number;
   temperature?: number;
   orgId: string;
+  requestId?: string;
 }
 
 export interface TokenUsage {

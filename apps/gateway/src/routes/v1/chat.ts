@@ -148,6 +148,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       maxTokens: req.max_tokens,
       temperature: req.temperature,
       orgId: auth.orgId,
+      requestId: c.get("requestId") as string | undefined,
     };
 
     if (!req.stream) {
