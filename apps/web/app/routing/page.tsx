@@ -6,6 +6,7 @@ import { getKey } from "../../lib/api";
 import { GATEWAY_URL } from "../../lib/api";
 
 interface Rule {
+  id?: string;
   orgId: string | null;
   modelAlias: string;
   strategy: string;
@@ -29,6 +30,16 @@ export default function Routing(): React.ReactElement {
   const [priority, setPriority] = useState("");
   const [weights, setWeights] = useState("");
   const [error, setError] = useState("");
+
+  async function removeRule(id: string): Promise<void> {
+    setError("");
+    const res = await authed(getKey(), `/v1/routing/rules/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setError("Delete failed (persistent rules only).");
+      return;
+    }
+    await refresh();
+  }
 
   async function refresh(): Promise<void> {
     try {
@@ -132,11 +143,21 @@ export default function Routing(): React.ReactElement {
       <div className="mt-4 rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
         <div className="mb-2 text-xs uppercase tracking-[0.12em] text-fog">Active rules</div>
         {rules.map((r, i) => (
-          <div key={i} className="flex items-center justify-between border-t border-edge py-3 text-sm first:border-t-0">
+          <div key={r.id ?? i} className="flex items-center justify-between border-t border-edge py-3 text-sm first:border-t-0">
             <span className="font-mono">
               {r.modelAlias} → {r.strategy} <span className="text-fog">×{r.maxAttempts}</span>
             </span>
-            <span className="font-mono text-xs text-fog">{r.orgId === null ? "global" : "org"}</span>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-xs text-fog">{r.orgId === null ? "global" : "org"}</span>
+              {r.id && (
+                <button
+                  className="rounded-lg border border-[#4a2323] px-2.5 py-1 font-mono text-xs text-red-400"
+                  onClick={() => removeRule(r.id as string)}
+                >
+                  delete
+                </button>
+              )}
+            </div>
           </div>
         ))}
         {rules.length === 0 && <p className="text-sm text-fog">No custom rules. Default strategy applies.</p>}

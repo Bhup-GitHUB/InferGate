@@ -1,6 +1,7 @@
 export type RoutingStrategy = "cost" | "latency" | "availability" | "weighted" | "priority";
 
 export interface RoutingRule {
+  id?: string;
   orgId: string | null;
   modelAlias: string;
   strategy: RoutingStrategy;

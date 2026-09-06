@@ -26,6 +26,7 @@ export class RuleCache {
     if (this.pg) {
       const stored = await this.pg.list(orgId);
       rules = stored.map((s) => ({
+        id: s.id,
         orgId: s.orgId,
         modelAlias: s.modelAlias,
         strategy: s.strategy as RoutingRule["strategy"],
