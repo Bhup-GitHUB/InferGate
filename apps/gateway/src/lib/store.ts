@@ -36,15 +36,20 @@ export interface UsageStore {
   recent(orgId: string, limit: number): Promise<UsageRecord[]>;
 }
 
-export class OrgPlans {
+export interface PlanStore {
+  get(orgId: string): Promise<string>;
+  set(orgId: string, plan: string): Promise<void>;
+}
+
+export class OrgPlans implements PlanStore {
   private plans = new Map<string, string>();
   private static valid = new Set(["free", "pro", "enterprise"]);
 
-  get(orgId: string): string {
+  async get(orgId: string): Promise<string> {
     return this.plans.get(orgId) ?? "free";
   }
 
-  set(orgId: string, plan: string): void {
+  async set(orgId: string, plan: string): Promise<void> {
     if (!OrgPlans.valid.has(plan)) {
       throw new Error(`Unknown plan: ${plan}`);
     }

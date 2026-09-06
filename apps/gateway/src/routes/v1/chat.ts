@@ -9,7 +9,7 @@ import type { Redis } from "ioredis";
 import type { GatewayConfig } from "../../lib/config";
 import type { AppEnv, AuthContext } from "../../lib/env";
 import type { UsageStore } from "../../lib/store";
-import { Notifier, WebhookStore } from "../../lib/webhooks";
+import { Notifier, type WebhookEndpoints } from "../../lib/webhooks";
 import type { RuleCache } from "../../lib/rules";
 import { requireScope } from "../../middleware/auth";
 
@@ -19,7 +19,7 @@ export interface ChatDeps {
   usage: UsageStore;
   config: GatewayConfig;
   redis: Redis | null;
-  webhooks: WebhookStore;
+  webhooks: WebhookEndpoints;
   notify: Notifier;
   rules: RuleCache;
 }

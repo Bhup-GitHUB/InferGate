@@ -1,13 +1,13 @@
 import type { Context, Next } from "hono";
 import { capsFor, checkQuota, monthWindow } from "@infergate/billing";
 import type { AppEnv } from "../lib/env";
-import { OrgPlans, type UsageStore } from "../lib/store";
-import { Notifier, WebhookStore } from "../lib/webhooks";
+import { type PlanStore, type UsageStore } from "../lib/store";
+import { Notifier, type WebhookEndpoints } from "../lib/webhooks";
 
 export interface QuotaDeps {
   usage: UsageStore;
-  plans: OrgPlans;
-  webhooks: WebhookStore;
+  plans: PlanStore;
+  webhooks: WebhookEndpoints;
   notify: Notifier;
 }
 
@@ -41,7 +41,7 @@ export function quotaMiddleware(deps: QuotaDeps) {
     }
     const auth = c.get("auth") as AppEnv["Variables"]["auth"];
     const now = Date.now();
-    const plan = deps.plans.get(auth.orgId);
+    const plan = await deps.plans.get(auth.orgId).catch(() => "free");
     let used = { tokens: 0, spendUsd: 0 };
     try {
       const { start } = monthWindow(now);

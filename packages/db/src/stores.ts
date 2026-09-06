@@ -131,8 +131,7 @@ export class PgRuleStore {
   }
 }
 
-function ruleFromRow(row: Record<string, unknown>): StoredRule {
-  const config = (row["config"] ?? {}) as { weights?: Record<string, number>; priority?: string[]; maxAttempts?: number };
+function ruleFromRow(row: Record<string, unknown>): StoredRule {  const config = (row["config"] ?? {}) as { weights?: Record<string, number>; priority?: string[]; maxAttempts?: number };
   return {
     id: row["id"] as string,
     orgId: row["org_id"] as string | null,
@@ -278,4 +277,73 @@ export class PgUsageStore implements UsageStore {
       return false;
     }
   }
+}
+
+const VALID_PLANS = new Set(["free", "pro", "enterprise"]);
+
+export class PgPlanStore {
+  constructor(private sql: Sql) {}
+
+  async get(orgId: string): Promise<string> {
+    const rows = await this.sql`SELECT plan FROM organizations WHERE id = ${orgId} LIMIT 1`;
+    if (rows.length === 0) {
+      return "free";
+    }
+    const plan = (rows[0] as Record<string, unknown>)["plan"] as string;
+    return VALID_PLANS.has(plan) ? plan : "free";
+  }
+
+  async set(orgId: string, plan: string): Promise<void> {
+    if (!VALID_PLANS.has(plan)) {
+      throw new Error(`Unknown plan: ${plan}`);
+    }
+    await this.sql`
+      INSERT INTO organizations (id, name, plan) VALUES (${orgId}, 'org', ${plan})
+      ON CONFLICT (id) DO UPDATE SET plan = EXCLUDED.plan
+    `;
+  }
+}
+
+export interface StoredWebhook {
+  id: string;
+  orgId: string;
+  url: string;
+  secret: string;
+  events: string[];
+}
+
+export class PgWebhookStore {
+  constructor(private sql: Sql) {}
+
+  async add(orgId: string, url: string, secret: string, events: string[]): Promise<StoredWebhook> {
+    const rows = await this.sql`
+      INSERT INTO webhooks (org_id, url, secret, events)
+      VALUES (${orgId}, ${url}, ${secret}, ${events})
+      RETURNING *
+    `;
+    return webhookFromRow(rows[0] as Record<string, unknown>);
+  }
+
+  async list(orgId: string): Promise<StoredWebhook[]> {
+    const rows = await this.sql`SELECT * FROM webhooks WHERE org_id = ${orgId} ORDER BY created_at DESC`;
+    return rows.map((r) => webhookFromRow(r as Record<string, unknown>));
+  }
+
+  async remove(orgId: string, id: string): Promise<boolean> {
+    if (!isUuid(id)) {
+      return false;
+    }
+    const rows = await this.sql`DELETE FROM webhooks WHERE id = ${id} AND org_id = ${orgId} RETURNING id`;
+    return rows.length > 0;
+  }
+}
+
+function webhookFromRow(row: Record<string, unknown>): StoredWebhook {
+  return {
+    id: row["id"] as string,
+    orgId: row["org_id"] as string,
+    url: row["url"] as string,
+    secret: row["secret"] as string,
+    events: row["events"] as string[],
+  };
 }

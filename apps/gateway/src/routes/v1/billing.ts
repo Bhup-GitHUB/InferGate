@@ -2,12 +2,12 @@ import { Hono } from "hono";
 import { buildInvoice, capsFor, monthWindow, rollupDaily } from "@infergate/billing";
 import { errorBody } from "@infergate/schemas";
 import type { AppEnv, AuthContext } from "../../lib/env";
-import { OrgPlans, type UsageStore } from "../../lib/store";
+import { type PlanStore, type UsageStore } from "../../lib/store";
 import { requireScope } from "../../middleware/auth";
 
 export interface BillingDeps {
   usage: UsageStore;
-  plans: OrgPlans;
+  plans: PlanStore;
 }
 
 export function billingRoutes(deps: BillingDeps): Hono<AppEnv> {
@@ -32,7 +32,7 @@ export function billingRoutes(deps: BillingDeps): Hono<AppEnv> {
     if (!requireScope(c, "billing:read")) {
       return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
     }    const auth = c.get("auth") as AuthContext;
-    const plan = deps.plans.get(auth.orgId);
+    const plan = await deps.plans.get(auth.orgId).catch(() => "free");
     const caps = capsFor(plan);
     const { start, month } = monthWindow(Date.now());
     const [period, rows] = await Promise.all([
@@ -72,7 +72,7 @@ export function billingRoutes(deps: BillingDeps): Hono<AppEnv> {
       return c.json(errorBody("Unknown plan", "invalid_request_error", "invalid_plan"), 400);
     }
     try {
-      deps.plans.set(auth.orgId, plan);
+      await deps.plans.set(auth.orgId, plan);
     } catch {
       return c.json(errorBody("Unknown plan", "invalid_request_error", "invalid_plan"), 400);
     }

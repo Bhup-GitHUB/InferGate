@@ -8,9 +8,9 @@ import { createDefaultRegistry, createRegistryFromEnv } from "@infergate/provide
 import { RoutingEngine, type RoutingStrategy } from "@infergate/routing";
 import { loadConfig } from "./lib/config";
 import type { AppEnv } from "./lib/env";
-import { MemoryKeyStore, MemoryUsageStore, type KeyStore, type UsageStore } from "./lib/store";
+import { MemoryKeyStore, MemoryUsageStore, type KeyStore, type PlanStore, type UsageStore } from "./lib/store";
 import { CachedKeyStore } from "./lib/keycache";
-import { createSql, PgKeyStore, PgRuleStore, PgUsageStore } from "@infergate/db";
+import { createSql, PgKeyStore, PgPlanStore, PgRuleStore, PgUsageStore, PgWebhookStore } from "@infergate/db";
 import { authMiddleware } from "./middleware/auth";
 import { rateLimitMiddleware } from "./middleware/ratelimit";
 import { tracingMiddleware } from "./middleware/tracing";
@@ -24,7 +24,7 @@ import { billingRoutes } from "./routes/v1/billing";
 import { schedulerRoutes } from "./routes/v1/scheduler";
 import { quotaMiddleware } from "./middleware/quota";
 import { webhookRoutes } from "./routes/v1/webhooks";
-import { Notifier, WebhookStore } from "./lib/webhooks";
+import { Notifier, PgWebhooks, WebhookStore, type WebhookEndpoints } from "./lib/webhooks";
 import { RuleCache } from "./lib/rules";
 import { OrgPlans } from "./lib/store";
 
@@ -33,8 +33,8 @@ export interface AppHandles {
   keys: KeyStore;
   usage: UsageStore;
   routing: RoutingEngine;
-  plans: OrgPlans;
-  webhooks: WebhookStore;
+  plans: PlanStore;
+  webhooks: WebhookEndpoints;
   notify: Notifier;
   rules: RuleCache;
   db: { ping: () => Promise<boolean> } | null;
@@ -45,8 +45,8 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   const config = loadConfig(merged);
   let keys: KeyStore = new MemoryKeyStore();
   let usage: UsageStore = new MemoryUsageStore();
-  const plans = new OrgPlans();
-  const webhooks = new WebhookStore();
+  let plans: PlanStore = new OrgPlans();
+  let webhooks: WebhookEndpoints = new WebhookStore();
   const notify = new Notifier();
   let db: { ping: () => Promise<boolean> } | null = null;
   let ruleStore: PgRuleStore | null = null;
@@ -58,6 +58,8 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
     usage = pgUsage;
     db = pgUsage;
     ruleStore = new PgRuleStore(sql);
+    plans = new PgPlanStore(sql);
+    webhooks = new PgWebhooks(new PgWebhookStore(sql));
   }
   const rules = new RuleCache(ruleStore);
   const redisClient = getRedis(merged["REDIS_URL"]);
