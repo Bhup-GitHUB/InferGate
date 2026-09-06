@@ -286,6 +286,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         throw new ProviderFailed(lastAttempted);
       };
       let outcome: { result: CompletionResult; attempts: number; effectiveModel: string; latencyMs: number };
+      let sharedFlight = false;
       try {
         if (flightKey) {
           let flight = flights.get(flightKey);
@@ -296,6 +297,8 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
               () => flights.delete(flightKey),
               () => flights.delete(flightKey),
             );
+          } else {
+            sharedFlight = true;
           }
           const abortWait = new Promise<never>((_, reject) => {
             if (controller.signal.aborted) {
@@ -393,6 +396,9 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       }
       c.header("x-infergate-provider", result.providerId);
       c.header("x-infergate-retry", String(usedAttempts - 1));
+      if (sharedFlight) {
+        c.header("x-infergate-shared", "true");
+      }
       return c.json(payload);
     }
 
