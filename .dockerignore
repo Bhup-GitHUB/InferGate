@@ -1,0 +1,15 @@
+.git
+.github
+node_modules
+apps/web/.next
+apps/web/node_modules
+docs
+tests
+tmp
+*.log
+.next
+coverage
+.env
+.dockerignore
+Dockerfile*
+docker-compose*

@@ -80,6 +80,7 @@
     },
     "/v1/keys/{id}/rotate": { "post": { "summary": "Rotate key", "responses": { "201": { "description": "rotated" } } } },
     "/v1/keys/{id}/revoke": { "post": { "summary": "Revoke key", "responses": { "200": { "description": "revoked" } } } },
+    "/v1/keys/{id}/revoke": { "post": { "summary": "Revoke key", "responses": { "200": { "description": "revoked" } } } },
     "/v1/usage": { "get": { "summary": "Usage summary", "responses": { "200": { "description": "summary" } } } },
     "/v1/usage/daily": { "get": { "summary": "Daily usage", "responses": { "200": { "description": "daily" } } } },
     "/v1/requests": { "get": { "summary": "Recent requests", "responses": { "200": { "description": "list" } } } },
