@@ -1,0 +1,86 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrate
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: ["bun", "run", "packages/db/src/migrate.ts"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: database-url
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-billing-worker
+  labels:
+    app: infergate-billing-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: infergate-billing-worker
+  template:
+    metadata:
+      labels:
+        app: infergate-billing-worker
+    spec:
+      containers:
+        - name: worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: ["bun", "run", "services/billing-worker/src/index.ts"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: database-url
+            - name: ROLLUP_INTERVAL_MS
+              value: "3600000"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-health-prober
+  labels:
+    app: infergate-health-prober
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: infergate-health-prober
+  template:
+    metadata:
+      labels:
+        app: infergate-health-prober
+    spec:
+      containers:
+        - name: prober
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: ["bun", "run", "services/health-prober/src/index.ts"]
+          env:
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: redis-url
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
