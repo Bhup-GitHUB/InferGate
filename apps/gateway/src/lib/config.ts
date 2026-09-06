@@ -13,6 +13,7 @@ export interface GatewayConfig {
   breakerThreshold: number;
   breakerCooldownMs: number;
   attemptTimeoutMs: number;
+  region: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined>): GatewayConfig {
@@ -35,5 +36,6 @@ export function loadConfig(env: Record<string, string | undefined>): GatewayConf
     breakerThreshold: Number(env["BREAKER_THRESHOLD"] ?? "5"),
     breakerCooldownMs: Number(env["BREAKER_COOLDOWN_MS"] ?? "30000"),
     attemptTimeoutMs: Number(env["ATTEMPT_TIMEOUT_MS"] ?? "30000"),
+    region: env["REGION"] ?? "home",
   };
 }

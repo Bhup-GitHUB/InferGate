@@ -169,6 +169,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             costUsd: 0,
             status: "ok",
             error: null,
+            region: deps.config.region,
           });
           c.header("x-infergate-provider", hit.providerId);
           c.header("x-infergate-retry", "0");
@@ -210,6 +211,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
           outputTokens: 0,
           latencyMs: 0,
           costUsd: 0,
+          region: deps.config.region,
         }).catch(() => null);
         if (!startedRow) {
           return c.json(errorBody("Usage unavailable", "provider_error", "usage_unavailable"), 503);
@@ -437,6 +439,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       outputTokens: 0,
       latencyMs: 0,
       costUsd: 0,
+      region: deps.config.region,
     }).catch(() => null);
     if (streamBegun && streamBegun.replayed) {
       const prior = streamBegun.row;

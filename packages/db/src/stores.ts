@@ -179,8 +179,8 @@ export class PgUsageStore implements UsageStore {
       }
     }
     const rows = await this.sql`
-      INSERT INTO requests (idempotency_key, org_id, key_id, provider_id, model, input_tokens, output_tokens, latency_ms, cost_usd, status, error)
-      VALUES (${record.idempotencyKey}, ${record.orgId}, ${record.keyId}, ${record.providerId}, ${record.model}, ${record.inputTokens}, ${record.outputTokens}, ${record.latencyMs}, ${String(record.costUsd)}, ${record.status}, ${record.error})
+      INSERT INTO requests (idempotency_key, org_id, key_id, provider_id, model, input_tokens, output_tokens, latency_ms, cost_usd, status, error, region)
+      VALUES (${record.idempotencyKey}, ${record.orgId}, ${record.keyId}, ${record.providerId}, ${record.model}, ${record.inputTokens}, ${record.outputTokens}, ${record.latencyMs}, ${String(record.costUsd)}, ${record.status}, ${record.error}, ${record.region ?? "home"})
       ON CONFLICT (org_id, idempotency_key) DO NOTHING
       RETURNING *
     `;
@@ -200,8 +200,8 @@ export class PgUsageStore implements UsageStore {
         return { row: existing, replayed: true };
       }
       const rows = await this.sql`
-        INSERT INTO requests (idempotency_key, org_id, key_id, provider_id, model, input_tokens, output_tokens, latency_ms, cost_usd, status, error)
-        VALUES (${record.idempotencyKey}, ${record.orgId}, ${record.keyId}, ${record.providerId}, ${record.model}, 0, 0, 0, '0', 'started', NULL)
+        INSERT INTO requests (idempotency_key, org_id, key_id, provider_id, model, input_tokens, output_tokens, latency_ms, cost_usd, status, error, region)
+        VALUES (${record.idempotencyKey}, ${record.orgId}, ${record.keyId}, ${record.providerId}, ${record.model}, 0, 0, 0, '0', 'started', NULL, ${record.region ?? "home"})
         ON CONFLICT (org_id, idempotency_key) DO NOTHING
         RETURNING *
       `;

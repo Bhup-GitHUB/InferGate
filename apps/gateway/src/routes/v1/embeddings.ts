@@ -63,6 +63,7 @@ export function embeddingRoutes(deps: { usage: UsageStore }): Hono<AppEnv> {
       costUsd: 0,
       status: "ok",
       error: null,
+      region: "home",
     }).catch(() => undefined);
     return c.json({
       object: "list",

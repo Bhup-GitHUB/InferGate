@@ -15,6 +15,7 @@ export interface UsageRecord {
   error: string | null;
   createdAt: number;
   responseBody?: string | null;
+  region?: string;
 }
 
 export interface KeyStore {
