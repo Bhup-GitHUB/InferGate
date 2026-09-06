@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { KeyGate } from "../../components/KeyGate";
 import { getKey, listModels, type ModelEntry } from "../../lib/api";
@@ -42,7 +43,7 @@ export default function Models(): React.ReactElement {
       <p className="mb-8 mt-1.5 text-sm text-fog">One endpoint, every engine. Pick by alias — routing handles the rest.</p>
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         {models.map((m) => (
-          <div key={m.id} className="rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
+          <Link key={m.id} href={`/models/${m.id}`} className="rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5 transition hover:-translate-y-0.5 hover:border-[#3a3a44]">
             <div className="mb-2 font-mono text-xs uppercase tracking-[0.12em] text-fog">{m.owned_by}</div>
             <div className="font-mono text-xl font-extrabold">{m.id}</div>
             <p className="text-[13px] text-fog">{PRICES[m.id] ?? "metered"}</p>
@@ -50,7 +51,7 @@ export default function Models(): React.ReactElement {
               <span className="h-1.5 w-1.5 rounded-full bg-acid shadow-[0_0_8px_#c8ff2e]" />
               available
             </span>
-          </div>
+          </Link>
         ))}
       </div>
     </div>
