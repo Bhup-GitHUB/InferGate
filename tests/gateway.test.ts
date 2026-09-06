@@ -19,6 +19,9 @@ describe("gateway", () => {
     expect(h.status).toBe(200);
     expect(h.headers.get("x-request-id")).toBeString();
     expect(h.headers.get("x-infergate-version")).toBe("0.1.0");
+    const missing = await app.request("/nope");
+    expect(missing.status).toBe(404);
+    expect(((await missing.json()) as { error: { code: string } }).error.code).toBe("not_found");
     const r = await app.request("/readyz");
     expect(r.status).toBe(200);
   });
