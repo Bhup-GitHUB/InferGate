@@ -168,7 +168,25 @@ function usageFromRow(row: Record<string, unknown>): UsageRecord {
 }
 
 export class PgUsageStore implements UsageStore {
-  constructor(private sql: Sql) {}
+  private write: Sql;
+  private read: Sql;
+
+  constructor(sql: Sql, readSql?: Sql) {
+    this.write = sql;
+    this.read = readSql ?? sql;
+  }
+
+  private get sql(): Sql {
+    return this.write;
+  }
+
+  private async withRead<T>(fn: (sql: Sql) => Promise<T>): Promise<T> {
+    try {
+      return await fn(this.read);
+    } catch {
+      return fn(this.write);
+    }
+  }
 
   async insert(record: Omit<UsageRecord, "id" | "createdAt">): Promise<UsageRecord> {    if (record.idempotencyKey) {
       const existing = await this.sql`
@@ -243,37 +261,45 @@ export class PgUsageStore implements UsageStore {
   }
 
   async usageByOrg(orgId: string): Promise<{ requests: number; inputTokens: number; outputTokens: number; costUsd: number }> {
-    const rows = await this.sql`
-      SELECT COUNT(*)::int AS requests, COALESCE(SUM(input_tokens),0)::int AS input_tokens,
-             COALESCE(SUM(output_tokens),0)::int AS output_tokens, COALESCE(SUM(cost_usd),0)::float AS cost_usd
-      FROM requests WHERE org_id = ${orgId} AND status = 'ok'
-    `;
-    const r = rows[0] as unknown as { requests: number; input_tokens: number; output_tokens: number; cost_usd: number };
-    return { requests: r.requests, inputTokens: r.input_tokens, outputTokens: r.output_tokens, costUsd: r.cost_usd };
+    return this.withRead(async (sql) => {
+      const rows = await sql`
+        SELECT COUNT(*)::int AS requests, COALESCE(SUM(input_tokens),0)::int AS input_tokens,
+               COALESCE(SUM(output_tokens),0)::int AS output_tokens, COALESCE(SUM(cost_usd),0)::float AS cost_usd
+        FROM requests WHERE org_id = ${orgId} AND status = 'ok'
+      `;
+      const r = rows[0] as unknown as { requests: number; input_tokens: number; output_tokens: number; cost_usd: number };
+      return { requests: r.requests, inputTokens: r.input_tokens, outputTokens: r.output_tokens, costUsd: r.cost_usd };
+    });
   }
 
   async recordsByOrg(orgId: string, sinceMs: number): Promise<UsageRecord[]> {
-    const rows = await this.sql`
-      SELECT * FROM requests WHERE org_id = ${orgId} AND created_at >= ${toTs(sinceMs)} ORDER BY created_at ASC
-    `;
-    return rows.map((r) => usageFromRow(r as Record<string, unknown>));
+    return this.withRead(async (sql) => {
+      const rows = await sql`
+        SELECT * FROM requests WHERE org_id = ${orgId} AND created_at >= ${toTs(sinceMs)} ORDER BY created_at ASC
+      `;
+      return rows.map((r) => usageFromRow(r as Record<string, unknown>));
+    });
   }
 
   async periodUsage(orgId: string, sinceMs: number): Promise<{ tokens: number; spendUsd: number }> {
-    const rows = await this.sql`
-      SELECT COALESCE(SUM(input_tokens + output_tokens),0)::int AS tokens, COALESCE(SUM(cost_usd),0)::float AS spend
-      FROM requests WHERE org_id = ${orgId} AND created_at >= ${toTs(sinceMs)}
-        AND (status = 'ok' OR input_tokens + output_tokens > 0)
-    `;
-    const r = rows[0] as unknown as { tokens: number; spend: number };
-    return { tokens: r.tokens, spendUsd: r.spend };
+    return this.withRead(async (sql) => {
+      const rows = await sql`
+        SELECT COALESCE(SUM(input_tokens + output_tokens),0)::int AS tokens, COALESCE(SUM(cost_usd),0)::float AS spend
+        FROM requests WHERE org_id = ${orgId} AND created_at >= ${toTs(sinceMs)}
+          AND (status = 'ok' OR input_tokens + output_tokens > 0)
+      `;
+      const r = rows[0] as unknown as { tokens: number; spend: number };
+      return { tokens: r.tokens, spendUsd: r.spend };
+    });
   }
 
   async recent(orgId: string, limit: number): Promise<UsageRecord[]> {
-    const rows = await this.sql`
-      SELECT * FROM requests WHERE org_id = ${orgId} ORDER BY created_at DESC LIMIT ${Math.min(Math.max(limit, 1), 100)}
-    `;
-    return rows.map((r) => usageFromRow(r as Record<string, unknown>));
+    return this.withRead(async (sql) => {
+      const rows = await sql`
+        SELECT * FROM requests WHERE org_id = ${orgId} ORDER BY created_at DESC LIMIT ${Math.min(Math.max(limit, 1), 100)}
+      `;
+      return rows.map((r) => usageFromRow(r as Record<string, unknown>));
+    });
   }
 
   async ping(): Promise<boolean> {

@@ -55,7 +55,9 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   const databaseUrl = merged["DATABASE_URL"];
   if (databaseUrl) {
     const sql = createSql({ connectionString: databaseUrl, maxConnections: 20, statementTimeoutMs: 5000 });
-    const pgUsage = new PgUsageStore(sql);
+    const readUrl = merged["DATABASE_READ_URL"];
+    const readSql = readUrl ? createSql({ connectionString: readUrl, maxConnections: 20, statementTimeoutMs: 5000 }) : undefined;
+    const pgUsage = new PgUsageStore(sql, readSql);
     keys = new PgKeyStore(sql);
     usage = pgUsage;
     db = pgUsage;
@@ -98,7 +100,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
     const syncBreakers = async (): Promise<void> => {
       for (const info of registry.providers()) {
         try {
-          const flag = await redisClient.get(`breaker:${info.id}`);
+          const flag = await redisClient.get(`breaker:${config.region}:${info.id}`);
           if (flag === "open") {
             routing.forceOpen(info.id);
           }
@@ -107,7 +109,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
         }
       }
       try {
-        const ewma = await redisClient.hgetall("provider:ewma");
+        const ewma = await redisClient.hgetall(`provider:ewma:${config.region}`);
         for (const [id, ms] of Object.entries(ewma)) {
           const latency = Number(ms);
           if (Number.isFinite(latency) && latency > 0) {

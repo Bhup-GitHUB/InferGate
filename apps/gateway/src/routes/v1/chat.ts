@@ -100,7 +100,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         deps.notify.emit(deps.webhooks, auth.orgId, "provider.outage", { provider: providerId });
         if (deps.redis) {
           deps.redis
-            .set(`breaker:${providerId}`, "open", "PX", deps.config.breakerCooldownMs)
+            .set(`breaker:${deps.config.region}:${providerId}`, "open", "PX", deps.config.breakerCooldownMs)
             .catch(() => undefined);
         }
       }
@@ -263,7 +263,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             const attemptLatency = Date.now() - attemptStarted;
             deps.routing.reportSuccess(adapter.id, attemptLatency);
             if (deps.redis) {
-              deps.redis.hset("provider:ewma", { [adapter.id]: String(attemptLatency) }).catch(() => undefined);
+              deps.redis.hset(`provider:ewma:${deps.config.region}`, { [adapter.id]: String(attemptLatency) }).catch(() => undefined);
             }
             observeRequest(result.providerId, effectiveModel, latencyMs, result.usage.inputTokens, result.usage.outputTokens, result.usage.costUsd);
             attempt.cancel();
@@ -570,7 +570,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             const streamLatency = Date.now() - attemptStarted;
             deps.routing.reportSuccess(active.id, streamLatency);
             if (deps.redis) {
-              deps.redis.hset("provider:ewma", { [active.id]: String(streamLatency) }).catch(() => undefined);
+              deps.redis.hset(`provider:ewma:${deps.config.region}`, { [active.id]: String(streamLatency) }).catch(() => undefined);
             }
           }
         } else if (interrupted && !clientGone && active) {

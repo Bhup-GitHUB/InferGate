@@ -3,7 +3,7 @@ import { generateKey } from "@infergate/auth";
 import { createRegistryFromEnv } from "@infergate/providers";
 import { createApp } from "../apps/gateway/src/app";
 
-function openaiUpstream(): Bun.Server {
+function openaiUpstream(): Bun.Server<unknown> {
   return Bun.serve({
     port: 0,
     fetch: (req) => {
@@ -26,7 +26,7 @@ function openaiUpstream(): Bun.Server {
   });
 }
 
-function anthropicUpstream(): Bun.Server {
+function anthropicUpstream(): Bun.Server<unknown> {
   return Bun.serve({
     port: 0,
     fetch: () => {
