@@ -3,13 +3,14 @@ import { streamSSE } from "hono/streaming";
 import { chatCompletionRequestSchema, errorBody } from "@infergate/schemas";
 import { observeProviderError, observeRequest, startSpan } from "@infergate/otel";
 import type { ProviderAdapter, ProviderRegistry } from "@infergate/providers";
-import { RoutingEngine } from "@infergate/routing";
+import { RoutingEngine, pickRule } from "@infergate/routing";
 import { cacheGet, cacheKey, cacheSet, type CachedCompletion } from "@infergate/cache";
 import type { Redis } from "ioredis";
 import type { GatewayConfig } from "../../lib/config";
 import type { AppEnv, AuthContext } from "../../lib/env";
 import type { UsageStore } from "../../lib/store";
 import { Notifier, WebhookStore } from "../../lib/webhooks";
+import type { RuleCache } from "../../lib/rules";
 import { requireScope } from "../../middleware/auth";
 
 export interface ChatDeps {
@@ -20,6 +21,7 @@ export interface ChatDeps {
   redis: Redis | null;
   webhooks: WebhookStore;
   notify: Notifier;
+  rules: RuleCache;
 }
 
 const AUTO_MODELS: Record<string, string> = {
@@ -109,9 +111,9 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       inflight.add(idemScope);
     }
 
-    const rule = deps.routing.ruleFor(auth.orgId, req.model, modelId);
-    const routingAlias = req.model === "auto" ? "auto" : modelId;
-    const candidateIds = deps.routing.candidatesFor(routingAlias);
+    const orgRules = await deps.rules.forOrg(auth.orgId).catch(() => []);
+    const rule = pickRule(orgRules, deps.routing.getDefaultStrategy(), auth.orgId, req.model, modelId);
+    const routingAlias = req.model === "auto" ? "auto" : modelId;    const candidateIds = deps.routing.candidatesFor(routingAlias);
     const ordered = deps.routing.orderCandidates(candidateIds, rule.strategy, rule).slice(0, Math.max(1, rule.maxAttempts));
     if (ordered.length === 0) {
       if (idemScope) {

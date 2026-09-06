@@ -9,7 +9,7 @@ import { RoutingEngine, type RoutingStrategy } from "@infergate/routing";
 import { loadConfig } from "./lib/config";
 import type { AppEnv } from "./lib/env";
 import { MemoryKeyStore, MemoryUsageStore, type KeyStore, type UsageStore } from "./lib/store";
-import { createSql, PgKeyStore, PgUsageStore } from "@infergate/db";
+import { createSql, PgKeyStore, PgRuleStore, PgUsageStore } from "@infergate/db";
 import { authMiddleware } from "./middleware/auth";
 import { rateLimitMiddleware } from "./middleware/ratelimit";
 import { tracingMiddleware } from "./middleware/tracing";
@@ -24,6 +24,7 @@ import { schedulerRoutes } from "./routes/v1/scheduler";
 import { quotaMiddleware } from "./middleware/quota";
 import { webhookRoutes } from "./routes/v1/webhooks";
 import { Notifier, WebhookStore } from "./lib/webhooks";
+import { RuleCache } from "./lib/rules";
 import { OrgPlans } from "./lib/store";
 
 export interface AppHandles {
@@ -34,6 +35,7 @@ export interface AppHandles {
   plans: OrgPlans;
   webhooks: WebhookStore;
   notify: Notifier;
+  rules: RuleCache;
   db: { ping: () => Promise<boolean> } | null;
 }
 
@@ -46,6 +48,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   const webhooks = new WebhookStore();
   const notify = new Notifier();
   let db: { ping: () => Promise<boolean> } | null = null;
+  let ruleStore: PgRuleStore | null = null;
   const databaseUrl = merged["DATABASE_URL"];
   if (databaseUrl) {
     const sql = createSql({ connectionString: databaseUrl, maxConnections: 20, statementTimeoutMs: 5000 });
@@ -53,7 +56,9 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
     keys = new PgKeyStore(sql);
     usage = pgUsage;
     db = pgUsage;
+    ruleStore = new PgRuleStore(sql);
   }
+  const rules = new RuleCache(ruleStore);
   const registry = createDefaultRegistry();
   const redisClient = getRedis(merged["REDIS_URL"]);
   if (!redisClient && (merged["NODE_ENV"] ?? "development") === "production") {
@@ -127,7 +132,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   guarded.use("*", authMiddleware(keys, peppers));
   guarded.use("*", rateLimitMiddleware(limiter, config.rateLimitFailOpen));
   guarded.use("*", quotaMiddleware({ usage, plans, webhooks, notify }));
-  guarded.route("/", chatRoutes({ registry, routing, usage, config, redis: redisClient, webhooks, notify }));
+  guarded.route("/", chatRoutes({ registry, routing, usage, config, redis: redisClient, webhooks, notify, rules }));
   guarded.route("/", embeddingRoutes());
   guarded.route("/", modelRoutes(registry));
   guarded.route("/", keyRoutes({ keys, config }));
@@ -135,8 +140,8 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   guarded.route("/", billingRoutes({ usage, plans }));
   guarded.route("/", webhookRoutes({ store: webhooks, notify }));
   guarded.route("/", schedulerRoutes());
-  guarded.route("/", routingRoutes(routing, registry));
+  guarded.route("/", routingRoutes({ engine: routing, registry, rules }));
   app.route("/v1", guarded);
 
-  return { app, keys, usage, routing, plans, webhooks, notify, db };
+  return { app, keys, usage, routing, plans, webhooks, notify, rules, db };
 }
