@@ -32,6 +32,7 @@ export function routingRoutes(deps: RoutingDeps): Hono<AppEnv> {
     }
     const providers = deps.registry.providers().map((p) => ({
       circuit: deps.engine.circuitState(p.id),
+      kind: p.kind,
       ...deps.engine.snapshot(p.id),
     }));
     return c.json({ object: "routing_health", providers });

@@ -15,7 +15,7 @@ export default function Overview(): React.ReactElement {
   const [usage, setUsage] = useState({ requests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 });
   const [billing, setBilling] = useState<{ plan: string; quotaUsd: number } | null>(null);
   const [daily, setDaily] = useState<Daily[]>([]);
-  const [providers, setProviders] = useState<{ id: string; circuit: string; ewmaLatencyMs: number; errorRate: number }[]>([]);
+  const [providers, setProviders] = useState<{ id: string; circuit: string; kind: string; ewmaLatencyMs: number; errorRate: number }[]>([]);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -135,7 +135,10 @@ export default function Overview(): React.ReactElement {
             <tbody>
               {providers.map((p) => (
                 <tr key={p.id}>
-                  <td className="border-b border-[#141418] px-3 py-3 font-mono tabular-nums">{p.id}</td>
+                  <td className="border-b border-[#141418] px-3 py-3 font-mono tabular-nums">
+                    {p.id}{" "}
+                    <span className={p.kind === "live" ? "text-acid" : "text-fog"}>· {p.kind}</span>
+                  </td>
                   <td className="border-b border-[#141418] px-3 py-3">
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-edge bg-[#131318] px-3 py-1 text-xs font-semibold">
                       <span

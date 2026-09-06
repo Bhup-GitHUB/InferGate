@@ -28,9 +28,14 @@ const DEFAULT_MODELS: ModelEntry[] = [
 export class ProviderRegistry {
   private adapters = new Map<string, ProviderAdapter>();
   private models: ModelEntry[] = [...DEFAULT_MODELS];
+  private live = new Set<string>();
 
   register(adapter: ProviderAdapter): void {
     this.adapters.set(adapter.id, adapter);
+  }
+
+  markLive(id: string): void {
+    this.live.add(id);
   }
 
   get(id: string): ProviderAdapter | undefined {
@@ -38,7 +43,7 @@ export class ProviderRegistry {
   }
 
   providers(): ProviderInfo[] {
-    return [...this.adapters.keys()].map((id) => ({ id, kind: "mock", enabled: true }));
+    return [...this.adapters.keys()].map((id) => ({ id, kind: this.live.has(id) ? "live" : "mock", enabled: true }));
   }
 
   listModels(): ModelEntry[] {
@@ -100,6 +105,7 @@ export function createRegistryFromEnv(env: Record<string, string | undefined>): 
         timeoutMs,
       }),
     );
+    registry.markLive("openai");
     live.push("openai");
   }
 
@@ -119,6 +125,7 @@ export function createRegistryFromEnv(env: Record<string, string | undefined>): 
         anthropicVersion: "2023-06-01",
       }),
     );
+    registry.markLive("anthropic");
     live.push("anthropic");
   }
 

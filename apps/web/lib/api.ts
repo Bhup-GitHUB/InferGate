@@ -75,7 +75,7 @@ export async function fetchBilling(key: string): Promise<{
 }
 
 export async function fetchRoutingHealth(key: string): Promise<{
-  providers: { id: string; circuit: string; ewmaLatencyMs: number; errorRate: number; costPer1k: number }[];
+  providers: { id: string; circuit: string; kind: string; ewmaLatencyMs: number; errorRate: number; costPer1k: number }[];
 }> {
   const res = await authed("/v1/routing/health", key);
   if (!res.ok) {
