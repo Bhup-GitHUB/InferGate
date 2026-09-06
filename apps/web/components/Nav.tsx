@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { GATEWAY_URL } from "../lib/api";
 
 const LINKS = [
   { href: "/", label: "Overview" },
@@ -18,6 +20,20 @@ const LINKS = [
 
 export function Nav(): React.ReactElement {
   const path = usePathname();
+  const [region, setRegion] = useState("home");
+  useEffect(() => {
+    fetch(`${GATEWAY_URL}/readyz`)
+      .then(async (r) => {
+        if (!r.ok) {
+          return;
+        }
+        const body = await r.json();
+        if (typeof body.region === "string") {
+          setRegion(body.region);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
   return (
     <>
       <nav className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b border-edge bg-panel/95 px-3 py-2 backdrop-blur lg:hidden">
@@ -63,7 +79,7 @@ export function Nav(): React.ReactElement {
         <div className="mb-2 text-[11px] uppercase tracking-[0.12em] text-fog">Gateway status</div>
         <div className="inline-flex items-center gap-2 rounded-full border border-edge bg-[#131318] px-3 py-1 text-xs font-semibold">
           <span className="h-1.5 w-1.5 rounded-full bg-acid shadow-[0_0_8px_#c8ff2e]" />
-          <span className="font-mono">operational</span>
+          <span className="font-mono">operational · {region}</span>
         </div>
       </div>
       </aside>
