@@ -18,6 +18,6 @@
 ## Next milestones
 - [x] PG-backed plans, webhooks, idempotent replay, shared breaker+EWMA state
 - [x] OTLP exporter, Grafana dashboard, multi-region plan, region tagging
+- [x] Read/write PG split + regional signal namespaces
 - [ ] Billing worker draining Redis stream (gateway writes sync today)
-- [ ] Read/write PG split + regional Redis namespaces
 - [ ] Real-model load numbers + HPA tuning on staging

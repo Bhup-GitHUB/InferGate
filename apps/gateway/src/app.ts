@@ -167,9 +167,9 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
       dbStatus = (await db.ping()) ? "ok" : "fail";
     }
     if (healthy.length === 0 || dbStatus === "fail") {
-      return c.json({ ready: false, providers: results, db: dbStatus ?? "unconfigured" }, 503);
+      return c.json({ ready: false, providers: results, db: dbStatus ?? "unconfigured", region: config.region }, 503);
     }
-    return c.json({ ready: true, providers: results, db: dbStatus ?? "unconfigured" });
+    return c.json({ ready: true, providers: results, db: dbStatus ?? "unconfigured", region: config.region });
   });
   app.get("/metrics", (c) => {
     const token = merged["METRICS_TOKEN"];
