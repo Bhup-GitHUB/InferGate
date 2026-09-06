@@ -1,0 +1,32 @@
+{
+  "title": "InferGate Gateway",
+  "uid": "infergate-gateway",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request rate by provider",
+      "type": "timeseries",
+      "targets": [{ "expr": "sum by (provider) (rate(infergate_requests_total[5m]))" }]
+    },
+    {
+      "id": 2,
+      "title": "Token throughput",
+      "type": "timeseries",
+      "targets": [{ "expr": "sum by (model) (rate(infergate_tokens_total[5m]))" }]
+    },
+    {
+      "id": 3,
+      "title": "Provider errors",
+      "type": "timeseries",
+      "targets": [{ "expr": "sum by (provider) (rate(infergate_provider_errors_total[5m]))" }]
+    },
+    {
+      "id": 4,
+      "title": "5xx share",
+      "type": "stat",
+      "targets": [{ "expr": "sum(rate(infergate_provider_errors_total[5m])) / sum(rate(infergate_requests_total[5m]))" }]
+    }
+  ]
+}
