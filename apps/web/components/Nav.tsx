@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/fleet", label: "GPU Fleet" },
   { href: "/keys", label: "API Keys" },
   { href: "/webhooks", label: "Webhooks" },
+  { href: "/audit", label: "Audit" },
   { href: "/billing", label: "Billing" },
 ];
 
