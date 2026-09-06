@@ -26,6 +26,7 @@ export default function Routing(): React.ReactElement {
   const [rules, setRules] = useState<Rule[]>([]);
   const [alias, setAlias] = useState("auto");
   const [strategy, setStrategy] = useState("availability");
+  const [priority, setPriority] = useState("");
   const [error, setError] = useState("");
 
   async function refresh(): Promise<void> {
@@ -63,7 +64,7 @@ export default function Routing(): React.ReactElement {
       <p className="mb-8 mt-1.5 text-sm text-fog">Per-model strategies. Requests pick them up within 30 seconds.</p>
       <div className="rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
         <div className="mb-2.5 text-xs uppercase tracking-[0.12em] text-fog">New rule</div>
-        <div className="grid gap-3 xl:grid-cols-[1fr_1fr_auto]">
+        <div className="grid gap-3 xl:grid-cols-[1fr_1fr_1fr_auto]">
           <input
             className="w-full rounded-xl border border-edge bg-[#08080a] px-3.5 py-3 font-mono text-sm outline-none focus:border-acid"
             value={alias}
@@ -81,13 +82,23 @@ export default function Routing(): React.ReactElement {
               </option>
             ))}
           </select>
+          <input
+            className="w-full rounded-xl border border-edge bg-[#08080a] px-3.5 py-3 font-mono text-sm outline-none focus:border-acid"
+            value={priority}
+            onChange={(e) => setPriority(e.target.value)}
+            placeholder="priority: openai,anthropic"
+          />
           <button
             className="rounded-xl border border-acid bg-acid px-5 py-3 text-sm font-bold text-black transition hover:-translate-y-px"
             onClick={async () => {
               setError("");
               const res = await authed(getKey(), "/v1/routing/rules", {
                 method: "POST",
-                body: JSON.stringify({ modelAlias: alias.trim() || "auto", strategy }),
+                body: JSON.stringify({
+                  modelAlias: alias.trim() || "auto",
+                  strategy,
+                  priority: priority.split(",").map((s) => s.trim()).filter((s) => s !== ""),
+                }),
               });
               if (!res.ok) {
                 setError("Creation failed.");
