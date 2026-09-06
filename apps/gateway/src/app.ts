@@ -149,6 +149,15 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
     }
     return c.json({ ok: true });
   });
+  app.get("/v1/openapi.json", async (c) => {
+    try {
+      const text = await Bun.file(new URL("../../../docs/openapi.json", import.meta.url).pathname).text();
+      c.header("Content-Type", "application/json");
+      return c.text(text);
+    } catch {
+      return c.text("unavailable", 503);
+    }
+  });
   app.get("/readyz", async (c) => {
     const results: Record<string, string> = {};
     for (const info of registry.providers()) {
