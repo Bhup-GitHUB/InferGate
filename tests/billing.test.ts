@@ -31,8 +31,7 @@ describe("billing", () => {
     expect(invoice.status).toBe("draft");
   });
 
-  test("org plan upgrades quota", async () => {
-    const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "1000" });
+  test("org plan upgrades quota", async () => {    const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "1000" });
     const g = generateKey("org_plan", ["chat:write", "keys:write", "billing:read"], PEPPER, 1);
     await handles.keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...g.record });
     const headers = { authorization: `Bearer ${g.publicKey}`, "content-type": "application/json" };
@@ -86,5 +85,28 @@ describe("billing", () => {
     expect(sbody.plan).toBe("pro");
     expect(sbody.tokensUsed).toBeGreaterThan(0);
     expect(sbody.invoice.status).toBe("draft");
+  });
+
+  test("crossing 80 percent emits quota warning", async () => {
+    const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "1000" });
+    const g = generateKey("org_warn", ["chat:write"], PEPPER, 1);
+    await handles.keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...g.record });
+    const hookServer = Bun.serve({ port: 0, fetch: () => new Response("ok") });
+    await handles.webhooks.add("org_warn", `http://localhost:${hookServer.port}/hook`, "0123456789abcdef", ["quota.warning"]);
+    await handles.usage.insert({
+      idempotencyKey: null, orgId: "org_warn", keyId: null, providerId: "openai", model: "gpt-4o",
+      inputTokens: 850000, outputTokens: 0, latencyMs: 10, costUsd: 0.5, status: "ok", error: null,
+    });
+    const res = await handles.app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${g.publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+    });
+    expect(res.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 200));
+    const warnings = handles.notify.deliveries("org_warn").filter((d) => d.type === "quota.warning");
+    expect(warnings.length).toBe(1);
+    expect(warnings[0].ok).toBe(true);
+    hookServer.stop(true);
   });
 });

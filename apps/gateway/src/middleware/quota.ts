@@ -14,6 +14,7 @@ export interface QuotaDeps {
 const SPEND_PREFIXES = ["/v1/chat/"];
 const USAGE_TTL_MS = 5000;
 const usageCache = new Map<string, { used: { tokens: number; spendUsd: number }; at: number }>();
+const warned = new Map<string, string>();
 
 async function cachedUsage(usage: UsageStore, orgId: string, start: number): Promise<{ tokens: number; spendUsd: number }> {
   const now = Date.now();
@@ -69,6 +70,23 @@ export function quotaMiddleware(deps: QuotaDeps) {
       remainingTokens: Math.max(0, caps.monthlyTokens - used.tokens),
       remainingSpend: Math.max(0, caps.monthlySpendUsd - used.spendUsd),
     });
+    const tokenPct = caps.monthlyTokens === 0 ? 0 : used.tokens / caps.monthlyTokens;
+    const spendPct = caps.monthlySpendUsd === 0 ? 0 : used.spendUsd / caps.monthlySpendUsd;
+    const warnKey = `${auth.orgId}:${monthWindow(now).month}`;
+    if ((tokenPct >= 0.8 || spendPct >= 0.8) && warned.get(auth.orgId) !== warnKey) {
+      warned.set(auth.orgId, warnKey);
+      if (warned.size > 5000) {
+        const first = warned.keys().next().value;
+        if (first) {
+          warned.delete(first);
+        }
+      }
+      deps.notify.emit(deps.webhooks, auth.orgId, "quota.warning", {
+        plan,
+        tokenPct: Math.round(tokenPct * 1000) / 1000,
+        spendPct: Math.round(spendPct * 1000) / 1000,
+      });
+    }
     await next();
   };
 }
