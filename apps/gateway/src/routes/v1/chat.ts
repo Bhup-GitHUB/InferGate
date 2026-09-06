@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { chatCompletionRequestSchema, errorBody } from "@infergate/schemas";
 import { observeProviderError, observeRequest, startSpan } from "@infergate/otel";
 import type { ProviderAdapter, ProviderRegistry } from "@infergate/providers";
+import type { CompletionResult } from "@infergate/providers";
 import { RoutingEngine, pickRule } from "@infergate/routing";
 import { cacheGet, cacheKey, cacheSet, type CachedCompletion } from "@infergate/cache";
 import type { Redis } from "ioredis";
@@ -82,6 +83,7 @@ function withAttemptTimeout(parent: AbortSignal, ms: number): { signal: AbortSig
 export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const inflight = new Set<string>();
+  const flights = new Map<string, Promise<{ result: CompletionResult; attempts: number; effectiveModel: string; latencyMs: number }>>();
 
   app.post("/chat/completions", async (c) => {
     if (!requireScope(c, "chat:write")) {
@@ -230,7 +232,12 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       }
       let attempts = 0;
       let lastAttempted = ordered[0].providerId;
-      try {
+      class ProviderFailed extends Error {
+        constructor(readonly providerId: string) {
+          super("provider_failed");
+        }
+      }
+      const execute = async (): Promise<{ result: CompletionResult; attempts: number; effectiveModel: string; latencyMs: number }> => {
         for (const cand of ordered) {
           attempts += 1;
           const adapter = deps.registry.get(cand.providerId);
@@ -251,50 +258,8 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
               deps.redis.hset("provider:ewma", { [adapter.id]: String(attemptLatency) }).catch(() => undefined);
             }
             observeRequest(result.providerId, effectiveModel, latencyMs, result.usage.inputTokens, result.usage.outputTokens, result.usage.costUsd);
-            if (req.cache_ttl) {
-              const entry: CachedCompletion = {
-                text: result.text,
-                inputTokens: result.usage.inputTokens,
-                outputTokens: result.usage.outputTokens,
-                costUsd: result.usage.costUsd,
-                providerId: result.providerId,
-                modelId: effectiveModel,
-              };
-              await cacheSet(deps.redis, cacheKey(auth.orgId, effectiveModel, req.messages, req.max_tokens, req.temperature), entry, req.cache_ttl);
-            }
-            const completionId = `chatcmpl-${crypto.randomUUID().slice(0, 12)}`;
-            const payload = {
-              id: completionId,
-              object: "chat.completion",
-              created: Math.floor(Date.now() / 1000),
-              model: effectiveModel,
-              choices: [{ index: 0, message: { role: "assistant", content: result.text }, finish_reason: "stop" }],
-              usage: {
-                prompt_tokens: result.usage.inputTokens,
-                completion_tokens: result.usage.outputTokens,
-                total_tokens: result.usage.inputTokens + result.usage.outputTokens,
-              },
-            };
-            if (begun) {
-              const envelope = JSON.stringify({
-                h: requestHash(req.model, req.messages, req.max_tokens, req.temperature),
-                r: payload,
-              });
-              await deps.usage.finish(begun.id, {
-                providerId: result.providerId,
-                model: effectiveModel,
-                inputTokens: result.usage.inputTokens,
-                outputTokens: result.usage.outputTokens,
-                latencyMs,
-                costUsd: result.usage.costUsd,
-                status: "ok",
-                error: null,
-                responseBody: envelope.length > MAX_REPLAY_BYTES ? null : envelope,
-              }).catch(() => undefined);
-            }
-            c.header("x-infergate-provider", result.providerId);
-            c.header("x-infergate-retry", String(attempts - 1));
-            return c.json(payload);
+            attempt.cancel();
+            return { result, attempts, effectiveModel, latencyMs };
           } catch (err) {
             attempt.cancel();
             const message = err instanceof Error ? err.message : "provider_failure";
@@ -311,21 +276,28 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             }
             continue;
           }
-          attempt.cancel();
         }
-        if (begun) {
-          await deps.usage.finish(begun.id, {
-            providerId: lastAttempted,
-            model: modelId,
-            inputTokens: 0,
-            outputTokens: 0,
-            latencyMs: Date.now() - started,
-            costUsd: 0,
-            status: "error",
-            error: "provider_unavailable",
-          }).catch(() => undefined);
+        throw new ProviderFailed(lastAttempted);
+      };
+      let outcome: { result: CompletionResult; attempts: number; effectiveModel: string; latencyMs: number };
+      try {
+        const flightKey = !req.stream && req.cache_ttl && !req.idempotency_key
+          ? `flight:${auth.orgId}:${cacheKey(auth.orgId, modelId, req.messages, req.max_tokens, req.temperature)}`
+          : null;
+        if (flightKey) {
+          let flight = flights.get(flightKey);
+          if (!flight) {
+            flight = execute();
+            flights.set(flightKey, flight);
+            flight.then(
+              () => flights.delete(flightKey),
+              () => flights.delete(flightKey),
+            );
+          }
+          outcome = await flight;
+        } else {
+          outcome = await execute();
         }
-        return c.json(errorBody("Provider unavailable", "provider_error", "provider_unavailable"), 502);
       } catch (err) {
         const message = err instanceof Error ? err.message : "provider_failure";
         if (message === "aborted") {
@@ -343,6 +315,18 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
           }
           return c.json(errorBody("Request timed out", "provider_error", "provider_timeout"), 504);
         }
+        if (err instanceof ProviderFailed && begun) {
+          await deps.usage.finish(begun.id, {
+            providerId: err.providerId,
+            model: modelId,
+            inputTokens: 0,
+            outputTokens: 0,
+            latencyMs: Date.now() - started,
+            costUsd: 0,
+            status: "error",
+            error: "provider_unavailable",
+          }).catch(() => undefined);
+        }
         return c.json(errorBody("Provider unavailable", "provider_error", "provider_unavailable"), 502);
       } finally {
         clearTimeout(timeout);
@@ -352,6 +336,51 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         }
         span.end();
       }
+      const { result, attempts: usedAttempts, effectiveModel, latencyMs } = outcome;
+      const completionId = `chatcmpl-${crypto.randomUUID().slice(0, 12)}`;
+      const payload = {
+        id: completionId,
+        object: "chat.completion",
+        created: Math.floor(Date.now() / 1000),
+        model: effectiveModel,
+        choices: [{ index: 0, message: { role: "assistant", content: result.text }, finish_reason: "stop" }],
+        usage: {
+          prompt_tokens: result.usage.inputTokens,
+          completion_tokens: result.usage.outputTokens,
+          total_tokens: result.usage.inputTokens + result.usage.outputTokens,
+        },
+      };
+      if (begun) {
+        const envelope = JSON.stringify({
+          h: requestHash(req.model, req.messages, req.max_tokens, req.temperature),
+          r: payload,
+        });
+        await deps.usage.finish(begun.id, {
+          providerId: result.providerId,
+          model: effectiveModel,
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          latencyMs,
+          costUsd: result.usage.costUsd,
+          status: "ok",
+          error: null,
+          responseBody: envelope.length > MAX_REPLAY_BYTES ? null : envelope,
+        }).catch(() => undefined);
+      }
+      if (req.cache_ttl) {
+        const entry: CachedCompletion = {
+          text: result.text,
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          costUsd: result.usage.costUsd,
+          providerId: result.providerId,
+          modelId: effectiveModel,
+        };
+        await cacheSet(deps.redis, cacheKey(auth.orgId, effectiveModel, req.messages, req.max_tokens, req.temperature), entry, req.cache_ttl);
+      }
+      c.header("x-infergate-provider", result.providerId);
+      c.header("x-infergate-retry", String(usedAttempts - 1));
+      return c.json(payload);
     }
 
     const streamController = new AbortController();
