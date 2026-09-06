@@ -40,6 +40,7 @@ function keyFromRow(row: Record<string, unknown>): StoredKey {
     hashedSecret: row["hashed_secret"] as string,
     pepperVersion: row["pepper_version"] as number,
     scopes: row["scopes"] as string[],
+    tier: (row["tier"] as string | null) ?? "standard",
     expiresAt: toMs(row["expires_at"] as Date | null),
     rotatedFromId: row["rotated_from_id"] as string | null,
     revokedAt: toMs(row["revoked_at"] as Date | null),
@@ -81,8 +82,8 @@ export class PgKeyStore implements KeyStore {
 
   async save(key: StoredKey): Promise<void> {
     await this.sql`
-      INSERT INTO api_keys (id, org_id, prefix, salt, hashed_secret, pepper_version, scopes, expires_at, rotated_from_id, revoked_at, created_at)
-      VALUES (${key.id}, ${key.orgId}, ${key.prefix}, ${key.salt}, ${key.hashedSecret}, ${key.pepperVersion}, ${key.scopes}, ${toTs(key.expiresAt)}, ${key.rotatedFromId}, ${toTs(key.revokedAt)}, ${toTs(key.createdAt) ?? new Date()})
+      INSERT INTO api_keys (id, org_id, prefix, salt, hashed_secret, pepper_version, scopes, tier, expires_at, rotated_from_id, revoked_at, created_at)
+      VALUES (${key.id}, ${key.orgId}, ${key.prefix}, ${key.salt}, ${key.hashedSecret}, ${key.pepperVersion}, ${key.scopes}, ${key.tier ?? "standard"}, ${toTs(key.expiresAt)}, ${key.rotatedFromId}, ${toTs(key.revokedAt)}, ${toTs(key.createdAt) ?? new Date()})
       ON CONFLICT (id) DO UPDATE SET revoked_at = EXCLUDED.revoked_at, expires_at = EXCLUDED.expires_at
     `;
   }

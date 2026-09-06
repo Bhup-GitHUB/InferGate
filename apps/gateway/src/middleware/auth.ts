@@ -33,7 +33,7 @@ export function authMiddleware(keys: KeyStore, peppers: Map<number, string>) {
     if (!isKeyActive(stored, Date.now())) {
       return c.json(errorBody("API key expired or revoked", "authentication_error", "key_inactive"), 401);
     }
-    c.set("auth", { keyId: stored.id, orgId: stored.orgId, scopes: stored.scopes });
+    c.set("auth", { keyId: stored.id, orgId: stored.orgId, scopes: stored.scopes, tier: stored.tier ?? "standard" });
     await next();
   };
 }

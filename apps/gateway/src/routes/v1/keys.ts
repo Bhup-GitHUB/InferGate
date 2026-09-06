@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { generateKey, type StoredKey } from "@infergate/auth";
+import { generateKey, isValidTier, type StoredKey } from "@infergate/auth";
 import { errorBody } from "@infergate/schemas";
 import type { GatewayConfig } from "../../lib/config";
 import type { AppEnv, AuthContext } from "../../lib/env";
@@ -43,8 +43,10 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
       return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
     }
     const auth = c.get("auth") as AuthContext;
+    const callerHas = (scope: string): boolean => auth.scopes.includes("*") || auth.scopes.includes(scope);
     let scopes: string[] = ["chat:write", "models:read", "usage:read"];
     let expiresInDays: number | null = null;
+    let tier = "standard";
     try {
       const body = await c.req.json();
       if (Array.isArray((body as { scopes?: unknown }).scopes)) {
@@ -62,6 +64,16 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
         }
         expiresInDays = Math.floor(days);
       }
+      const requestedTier = (body as { tier?: unknown }).tier;
+      if (requestedTier !== undefined) {
+        if (typeof requestedTier !== "string" || !isValidTier(requestedTier)) {
+          return c.json(errorBody("Invalid tier", "invalid_request_error", "invalid_tier"), 400);
+        }
+        if (requestedTier !== "standard" && !callerHas("admin:write")) {
+          return c.json(errorBody("Tier requires admin", "authorization_error", "forbidden_tier"), 403);
+        }
+        tier = requestedTier;
+      }
     } catch {
       return c.json(errorBody("Invalid JSON body", "invalid_request_error", "invalid_json"), 400);
     }
@@ -71,7 +83,7 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
     if (granted.length === 0) {
       return c.json(errorBody("No permitted scopes", "authorization_error", "forbidden_scopes"), 403);
     }
-    const generated = generateKey(auth.orgId, granted, deps.config.pepper, deps.config.pepperVersion);
+    const generated = generateKey(auth.orgId, granted, deps.config.pepper, deps.config.pepperVersion, tier);
     const record: StoredKey = {
       id: crypto.randomUUID(),
       createdAt: Date.now(),
@@ -85,6 +97,7 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
       prefix: record.prefix,
       api_key: generated.publicKey,
       scopes: record.scopes,
+      tier: record.tier,
       org_id: auth.orgId,
     }, 201);
   });

@@ -7,7 +7,7 @@ function buildApp(scopes: string[] | null) {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
     if (scopes !== null) {
-      c.set("auth", { keyId: "key-test", orgId: "org-test", scopes });
+      c.set("auth", { keyId: "key-test", orgId: "org-test", scopes, tier: "standard" });
     }
     await next();
   });

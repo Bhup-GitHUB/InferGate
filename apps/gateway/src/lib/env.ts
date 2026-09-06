@@ -2,6 +2,7 @@ export interface AuthContext {
   keyId: string;
   orgId: string;
   scopes: string[];
+  tier: string;
 }
 
 export interface QuotaBudget {

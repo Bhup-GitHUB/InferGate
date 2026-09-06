@@ -3,6 +3,20 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 export const KEY_PREFIX = "ig_sk";
 export const ROTATION_GRACE_MS = 24 * 60 * 60 * 1000;
 
+export const TIERS: Record<string, number> = {
+  standard: 1,
+  plus: 5,
+  scale: 20,
+};
+
+export function tierMultiplier(tier: string): number {
+  return TIERS[tier] ?? 1;
+}
+
+export function isValidTier(tier: string): boolean {
+  return tier in TIERS;
+}
+
 export interface GeneratedKey {
   publicKey: string;
   prefix: string;
@@ -20,6 +34,7 @@ export interface StoredKey {
   hashedSecret: string;
   pepperVersion: number;
   scopes: string[];
+  tier: string;
   expiresAt: number | null;
   rotatedFromId: string | null;
   revokedAt: number | null;
@@ -44,7 +59,7 @@ export function hashSecret(secret: string, salt: string, pepper: string): string
   return createHmac("sha256", pepper).update(`${salt}:${secret}`).digest("hex");
 }
 
-export function generateKey(orgId: string, scopes: string[], pepper: string, pepperVersion: number): GeneratedKey & { record: Omit<StoredKey, "id" | "createdAt"> } {
+export function generateKey(orgId: string, scopes: string[], pepper: string, pepperVersion: number, tier = "standard"): GeneratedKey & { record: Omit<StoredKey, "id" | "createdAt"> } {
   const prefixBytes = randomBytes(6);
   const secretBytes = randomBytes(24);
   const prefix = base62(prefixBytes, 6);
@@ -66,6 +81,7 @@ export function generateKey(orgId: string, scopes: string[], pepper: string, pep
       hashedSecret,
       pepperVersion,
       scopes,
+      tier,
       expiresAt: null,
       rotatedFromId: null,
       revokedAt: null,

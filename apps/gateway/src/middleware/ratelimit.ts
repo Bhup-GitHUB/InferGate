@@ -3,9 +3,17 @@ import { errorBody } from "@infergate/schemas";
 import type { RateLimiter } from "@infergate/ratelimit";
 import type { AppEnv } from "../lib/env";
 
-export function rateLimitMiddleware(limiter: RateLimiter, failOpen: boolean) {
+export interface TieredLimiters {
+  standard: RateLimiter;
+  plus: RateLimiter;
+  scale: RateLimiter;
+}
+
+export function rateLimitMiddleware(limiters: TieredLimiters, failOpen: boolean) {
   return async (c: Context<AppEnv>, next: Next) => {
     const auth = c.get("auth") as AppEnv["Variables"]["auth"] | undefined;
+    const tier = auth?.tier ?? "standard";
+    const limiter = limiters[tier as keyof TieredLimiters] ?? limiters.standard;
     const identity = auth?.keyId ?? c.req.header("x-forwarded-for") ?? "anon";
     const bucket = `key:${identity}:${c.req.path}`;
     try {

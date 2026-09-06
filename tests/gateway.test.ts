@@ -260,6 +260,32 @@ describe("gateway", () => {
     });
     expect(res.status).toBe(403);
   });
+
+  test("plus tier survives standard limit and needs admin to mint", async () => {
+    const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "2" });
+    const admin = generateKey("org_tier", ["keys:write", "models:read", "admin:write"], PEPPER, 1);
+    await handles.keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...admin.record });
+    const minted = await handles.app.request("/v1/keys", {
+      method: "POST",
+      headers: { authorization: `Bearer ${admin.publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ scopes: ["models:read"], tier: "plus" }),
+    });
+    expect(minted.status).toBe(201);
+    const plusKey = (await minted.json()) as { api_key: string; tier: string };
+    expect(plusKey.tier).toBe("plus");
+    const narrow = generateKey("org_tier2", ["keys:write", "models:read"], PEPPER, 1);
+    await handles.keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...narrow.record });
+    const forbidden = await handles.app.request("/v1/keys", {
+      method: "POST",
+      headers: { authorization: `Bearer ${narrow.publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ scopes: ["models:read"], tier: "plus" }),
+    });
+    expect(forbidden.status).toBe(403);
+    const headers = { authorization: `Bearer ${plusKey.api_key}` };
+    expect((await handles.app.request("/v1/models", { headers })).status).toBe(200);
+    expect((await handles.app.request("/v1/models", { headers })).status).toBe(200);
+    expect((await handles.app.request("/v1/models", { headers })).status).toBe(200);
+  });
   test("revoked key is rejected", async () => {
     const { app, publicKey, keyId, keys } = await setup();
     await keys.revoke(keyId, Date.now());
@@ -279,8 +305,7 @@ describe("gateway", () => {
     expect(res.status).toBe(403);
   });
 
-  test("rate limit returns 429", async () => {
-    const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "2" });
+  test("rate limit returns 429", async () => {    const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "2" });
     const g = generateKey("org_rl", ["models:read"], PEPPER, 1);
     await handles.keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...g.record });
     const headers = { authorization: `Bearer ${g.publicKey}` };

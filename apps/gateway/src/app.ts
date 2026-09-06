@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
-import { createRateLimiter } from "@infergate/ratelimit";
+import { createRateLimiter, type RateLimiter } from "@infergate/ratelimit";
 import { getRedis, RedisTokenBucket } from "@infergate/cache";
 import { renderPrometheus, structuredLog } from "@infergate/otel";
 import { createDefaultRegistry, createRegistryFromEnv } from "@infergate/providers";
@@ -128,12 +128,14 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
       t.unref();
     }
   }
-  const limiter = redisClient
-    ? new RedisTokenBucket(redisClient, config.rateLimitPerMinute, config.rateLimitPerMinute, config.rateLimitFailOpen)
-    : createRateLimiter(undefined, {
-        capacity: config.rateLimitPerMinute,
-        refillPerMinute: config.rateLimitPerMinute,
-      });
+  const makeLimiter = (multiplier: number): RateLimiter => {
+    const capacity = config.rateLimitPerMinute * multiplier;
+    if (redisClient) {
+      return new RedisTokenBucket(redisClient, capacity, capacity, config.rateLimitFailOpen);
+    }
+    return createRateLimiter(undefined, { capacity, refillPerMinute: capacity });
+  };
+  const limiters = { standard: makeLimiter(1), plus: makeLimiter(5), scale: makeLimiter(20) };
   const peppers = new Map<number, string>([[config.pepperVersion, config.pepper]]);
 
   const app = new Hono<AppEnv>();
@@ -185,7 +187,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
 
   const guarded = new Hono<AppEnv>();
   guarded.use("*", authMiddleware(keys, peppers));
-  guarded.use("*", rateLimitMiddleware(limiter, config.rateLimitFailOpen));
+  guarded.use("*", rateLimitMiddleware(limiters, config.rateLimitFailOpen));
   guarded.use("*", quotaMiddleware({ usage, plans, webhooks, notify }));
   guarded.route("/", chatRoutes({ registry, routing, usage, config, redis: redisClient, webhooks, notify, rules }));
   guarded.route("/", embeddingRoutes({ usage }));
