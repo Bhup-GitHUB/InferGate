@@ -230,6 +230,25 @@ describe("gateway", () => {
     expect(check.status).toBe(200);
   });
 
+  test("key creation supports expiry", async () => {
+    const { app, publicKey, keys } = await setup();
+    const res = await app.request("/v1/keys", {
+      method: "POST",
+      headers: { authorization: `Bearer ${publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ scopes: ["models:read"], expires_in_days: 30 }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    const stored = await keys.findById(body.id);
+    expect(stored?.expiresAt).toBeGreaterThan(Date.now());
+    const bad = await app.request("/v1/keys", {
+      method: "POST",
+      headers: { authorization: `Bearer ${publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ expires_in_days: 400 }),
+    });
+    expect(bad.status).toBe(400);
+  });
+
   test("key creation cannot escalate scopes", async () => {
     const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "1000" });
     const g = generateKey("org_narrow", ["keys:write", "models:read"], PEPPER, 1);

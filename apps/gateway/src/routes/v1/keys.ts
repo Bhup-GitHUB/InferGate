@@ -43,6 +43,7 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
     }
     const auth = c.get("auth") as AuthContext;
     let scopes: string[] = ["chat:write", "models:read", "usage:read"];
+    let expiresInDays: number | null = null;
     try {
       const body = await c.req.json();
       if (Array.isArray((body as { scopes?: unknown }).scopes)) {
@@ -52,6 +53,13 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
         if (scopes.length === 0) {
           return c.json(errorBody("No valid scopes", "invalid_request_error", "invalid_scopes"), 400);
         }
+      }
+      const days = (body as { expires_in_days?: unknown }).expires_in_days;
+      if (days !== undefined) {
+        if (typeof days !== "number" || !Number.isFinite(days) || days < 1 || days > 365) {
+          return c.json(errorBody("Invalid expiry", "invalid_request_error", "invalid_expiry"), 400);
+        }
+        expiresInDays = Math.floor(days);
       }
     } catch {
       return c.json(errorBody("Invalid JSON body", "invalid_request_error", "invalid_json"), 400);
@@ -67,6 +75,7 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
       id: crypto.randomUUID(),
       createdAt: Date.now(),
       ...generated.record,
+      expiresAt: expiresInDays === null ? null : Date.now() + expiresInDays * 86400000,
     };
     await deps.keys.save(record);
     await deps.audit.record(auth.orgId, auth.keyId, "key.create", record.id).catch(() => undefined);
