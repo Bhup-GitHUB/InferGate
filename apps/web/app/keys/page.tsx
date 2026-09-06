@@ -15,6 +15,7 @@ export default function Keys(): React.ReactElement {
   const [rows, setRows] = useState<Row[]>([]);
   const [scopes, setScopes] = useState("chat:write,models:read,usage:read");
   const [expiry, setExpiry] = useState("");
+  const [tier, setTier] = useState("standard");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -44,6 +45,7 @@ export default function Keys(): React.ReactElement {
         getKey(),
         scopes.split(",").map((s) => s.trim()).filter((s) => s !== ""),
         days,
+        tier,
       );
       setRows((r) => [{ id: res.id, prefix: res.prefix, secret: res.api_key }, ...r]);
       setExpiry("");
@@ -88,6 +90,17 @@ export default function Keys(): React.ReactElement {
             onChange={(e) => setExpiry(e.target.value)}
             placeholder="days"
           />
+          <select
+            className="w-32 shrink-0 rounded-xl border border-edge bg-[#08080a] px-3.5 py-3 font-mono text-sm outline-none focus:border-acid"
+            value={tier}
+            onChange={(e) => setTier(e.target.value)}
+          >
+            {["standard", "plus", "scale"].map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
           <button
             className="shrink-0 rounded-xl border border-acid bg-acid px-5 py-3 text-sm font-bold text-black shadow-[0_0_24px_rgba(200,255,46,0.35)] transition hover:-translate-y-px"
             onClick={create}
