@@ -36,8 +36,23 @@ Creates successor key, 24h dual-accept grace. Requires `keys:write`.
 ### POST /v1/keys
 
 Mints a key for the caller org. Requested scopes are intersected with the
-caller scopes (no escalation). Returns the secret once. Requires `keys:write`.
+caller scopes (no escalation). Optional `expires_in_days` (1..365) and
+`tier` (`standard`|`plus`|`scale`, non-standard needs `admin:write`).
+Returns the secret once. Requires `keys:write`.
 
+### GET /v1/keys
+
+Lists org keys (prefix, scopes, tier, expiry, last use — never secrets).
+Requires `keys:write`.
+
+### GET /v1/models/:id
+
+Model detail with provider, per-1k pricing, and context window.
+Requires `models:read`.
+
+### GET /v1/audit?limit=50
+
+Admin action trail (key/plan/webhook/rule changes). Requires `keys:write`.
 ### GET /v1/usage · GET /v1/usage/daily?days=7 · GET /v1/requests?limit=25
 
 Usage summary, daily rollup (1..90 days), recent request feed.
@@ -72,7 +87,7 @@ Require `models:read`.
 
 ### Misc
 
-- `POST /v1/org/plan {plan: free|pro|enterprise}` — requires `keys:write`.
+- `POST /v1/org/plan {plan: free|pro|enterprise}` — requires `admin:write`.
 - `GET /v1/webhooks/deliveries` — recent delivery attempts, requires `keys:write`.
 - Non-stream responses carry `Server-Timing: gateway;dur=N`.
 - Streams emit an `event: infergate.route` frame first with the winning
