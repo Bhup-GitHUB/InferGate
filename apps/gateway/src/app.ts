@@ -205,7 +205,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   guarded.use("*", quotaMiddleware({ usage, plans, webhooks, notify }));
   guarded.route("/", chatRoutes({ registry, routing, usage, config, redis: redisClient, webhooks, notify, rules }));
   guarded.route("/", embeddingRoutes({ usage }));
-  guarded.route("/", modelRoutes(registry));
+  guarded.route("/", modelRoutes({ registry, audit }));
   guarded.route("/", keyRoutes({ keys, config, audit }));
   guarded.route("/", usageRoutes(usage));
   guarded.route("/", billingRoutes({ usage, plans, audit }));
