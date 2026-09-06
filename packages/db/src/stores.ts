@@ -158,6 +158,7 @@ function usageFromRow(row: Record<string, unknown>): UsageRecord {
     status: row["status"] as string,
     error: row["error"] as string | null,
     createdAt: new Date(row["created_at"] as Date).getTime(),
+    responseBody: (row["response_body"] ?? null) as string | null,
   };
 }
 
@@ -209,14 +210,15 @@ export class PgUsageStore implements UsageStore {
     return { row: started, replayed: false };
   }
 
-  async finish(id: string, patch: { providerId?: string | null; model?: string; inputTokens: number; outputTokens: number; latencyMs: number; costUsd: number; status: string; error: string | null }): Promise<void> {
+  async finish(id: string, patch: { providerId?: string | null; model?: string; inputTokens: number; outputTokens: number; latencyMs: number; costUsd: number; status: string; error: string | null; responseBody?: string | null }): Promise<void> {
     await this.sql`
       UPDATE requests
       SET provider_id = COALESCE(${patch.providerId ?? null}, provider_id),
           model = COALESCE(${patch.model ?? null}, model),
           input_tokens = ${patch.inputTokens}, output_tokens = ${patch.outputTokens},
           latency_ms = ${patch.latencyMs}, cost_usd = ${String(patch.costUsd)},
-          status = ${patch.status}, error = ${patch.error}
+          status = ${patch.status}, error = ${patch.error},
+          response_body = COALESCE(${patch.responseBody ?? null}, response_body)
       WHERE id = ${id}
     `;
   }

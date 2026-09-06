@@ -190,6 +190,10 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         }
         if (startedRow.replayed) {
           const prior = startedRow.row;
+          if (prior.status === "ok" && prior.responseBody) {
+            c.header("x-infergate-replay", "true");
+            return c.json(JSON.parse(prior.responseBody) as Record<string, unknown>);
+          }
           const adoptable = prior.status === "started" && Date.now() - prior.createdAt > 300000;
           if (!adoptable) {
             return c.json(errorBody("Duplicate request", "invalid_request_error", "idempotent_replay"), 409);
@@ -224,18 +228,6 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             if (deps.redis) {
               deps.redis.hset("provider:ewma", { [adapter.id]: String(attemptLatency) }).catch(() => undefined);
             }
-            if (begun) {
-              await deps.usage.finish(begun.id, {
-                providerId: result.providerId,
-                model: effectiveModel,
-                inputTokens: result.usage.inputTokens,
-                outputTokens: result.usage.outputTokens,
-                latencyMs,
-                costUsd: result.usage.costUsd,
-                status: "ok",
-                error: null,
-              }).catch(() => undefined);
-            }
             observeRequest(result.providerId, effectiveModel, latencyMs, result.usage.inputTokens, result.usage.outputTokens, result.usage.costUsd);
             if (req.cache_ttl) {
               const entry: CachedCompletion = {
@@ -249,9 +241,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
               await cacheSet(deps.redis, cacheKey(auth.orgId, effectiveModel, req.messages, req.max_tokens, req.temperature), entry, req.cache_ttl);
             }
             const completionId = `chatcmpl-${crypto.randomUUID().slice(0, 12)}`;
-            c.header("x-infergate-provider", result.providerId);
-            c.header("x-infergate-retry", String(attempts - 1));
-            return c.json({
+            const payload = {
               id: completionId,
               object: "chat.completion",
               created: Math.floor(Date.now() / 1000),
@@ -262,7 +252,23 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
                 completion_tokens: result.usage.outputTokens,
                 total_tokens: result.usage.inputTokens + result.usage.outputTokens,
               },
-            });
+            };
+            if (begun) {
+              await deps.usage.finish(begun.id, {
+                providerId: result.providerId,
+                model: effectiveModel,
+                inputTokens: result.usage.inputTokens,
+                outputTokens: result.usage.outputTokens,
+                latencyMs,
+                costUsd: result.usage.costUsd,
+                status: "ok",
+                error: null,
+                responseBody: JSON.stringify(payload),
+              }).catch(() => undefined);
+            }
+            c.header("x-infergate-provider", result.providerId);
+            c.header("x-infergate-retry", String(attempts - 1));
+            return c.json(payload);
           } catch (err) {
             attempt.cancel();
             const message = err instanceof Error ? err.message : "provider_failure";

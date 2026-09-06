@@ -14,6 +14,7 @@ export interface UsageRecord {
   status: string;
   error: string | null;
   createdAt: number;
+  responseBody?: string | null;
 }
 
 export interface KeyStore {
@@ -27,7 +28,7 @@ export interface KeyStore {
 export interface UsageStore {
   insert(record: Omit<UsageRecord, "id" | "createdAt">): Promise<UsageRecord>;
   begin(record: Omit<UsageRecord, "id" | "createdAt" | "status" | "error">): Promise<{ row: UsageRecord; replayed: boolean }>;
-  finish(id: string, patch: { providerId?: string | null; model?: string; inputTokens: number; outputTokens: number; latencyMs: number; costUsd: number; status: string; error: string | null }): Promise<void>;
+  finish(id: string, patch: { providerId?: string | null; model?: string; inputTokens: number; outputTokens: number; latencyMs: number; costUsd: number; status: string; error: string | null; responseBody?: string | null }): Promise<void>;
   remove(id: string): Promise<void>;
   findByIdempotencyKey(orgId: string, key: string): Promise<UsageRecord | null>;
   usageByOrg(orgId: string): Promise<{ requests: number; inputTokens: number; outputTokens: number; costUsd: number }>;
@@ -113,7 +114,7 @@ export class MemoryUsageStore implements UsageStore {
     return { row, replayed: false };
   }
 
-  async finish(id: string, patch: { providerId?: string | null; model?: string; inputTokens: number; outputTokens: number; latencyMs: number; costUsd: number; status: string; error: string | null }): Promise<void> {
+  async finish(id: string, patch: { providerId?: string | null; model?: string; inputTokens: number; outputTokens: number; latencyMs: number; costUsd: number; status: string; error: string | null; responseBody?: string | null }): Promise<void> {
     const row = this.records.find((r) => r.id === id);
     if (!row) {
       return;
@@ -130,6 +131,9 @@ export class MemoryUsageStore implements UsageStore {
     row.costUsd = patch.costUsd;
     row.status = patch.status;
     row.error = patch.error;
+    if (patch.responseBody !== undefined) {
+      row.responseBody = patch.responseBody;
+    }
   }
 
   async remove(id: string): Promise<void> {

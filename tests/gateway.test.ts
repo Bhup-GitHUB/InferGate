@@ -145,21 +145,20 @@ describe("gateway", () => {
     expect(row?.inputTokens).toBeGreaterThan(0);
   });
 
-  test("idempotent replay returns 409", async () => {
-    const { app, publicKey } = await setup();
+  test("idempotent replay returns original without double billing", async () => {
+    const { app, publicKey, usage } = await setup();
     const payload = { model: "gpt-4o-mini", messages: [{ role: "user", content: "once" }], idempotency_key: "idem-1" };
-    const first = await app.request("/v1/chat/completions", {
-      method: "POST",
-      headers: { authorization: `Bearer ${publicKey}`, "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const headers = { authorization: `Bearer ${publicKey}`, "content-type": "application/json" };
+    const first = await app.request("/v1/chat/completions", { method: "POST", headers, body: JSON.stringify(payload) });
     expect(first.status).toBe(200);
-    const second = await app.request("/v1/chat/completions", {
-      method: "POST",
-      headers: { authorization: `Bearer ${publicKey}`, "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    expect(second.status).toBe(409);
+    const firstBody = await first.json();
+    const second = await app.request("/v1/chat/completions", { method: "POST", headers, body: JSON.stringify(payload) });
+    expect(second.status).toBe(200);
+    expect(second.headers.get("x-infergate-replay")).toBe("true");
+    const secondBody = await second.json();
+    expect(secondBody.choices[0].message.content).toBe(firstBody.choices[0].message.content);
+    const summary = await usage.usageByOrg("org_test");
+    expect(summary.requests).toBe(1);
   });
 
   test("key rotation issues successor and keeps grace", async () => {
