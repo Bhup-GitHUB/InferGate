@@ -8,6 +8,7 @@ interface Turn {
   role: "user" | "assistant";
   content: string;
   provider?: string;
+  ms?: number;
 }
 
 export default function Playground(): React.ReactElement {
@@ -50,6 +51,7 @@ export default function Playground(): React.ReactElement {
     }
     setBusy(true);
     setProvider("");
+    const t0 = Date.now();
     const history: ChatMessage[] = [...turns.map((t) => ({ role: t.role, content: t.content }) as ChatMessage), { role: "user", content: text }];
     setTurns((t) => [...t, { role: "user", content: text }]);
     setInput("");
@@ -71,9 +73,10 @@ export default function Playground(): React.ReactElement {
         (p) => setProvider(p),
       );
       const finalProvider = provider;
+      const ms = Date.now() - t0;
       setTurns((t) => {
         const next = [...t];
-        next[next.length - 1] = { role: "assistant", content: acc, provider: finalProvider || undefined };
+        next[next.length - 1] = { role: "assistant", content: acc, provider: finalProvider || undefined, ms };
         return next;
       });
     } catch {
@@ -108,6 +111,7 @@ export default function Playground(): React.ReactElement {
                 <div className="mb-1.5 text-[11px] uppercase tracking-[0.12em] text-fog">
                   {t.role}
                   {t.provider ? ` · ${t.provider}` : ""}
+                  {t.ms !== undefined ? ` · ${(t.ms / 1000).toFixed(1)}s` : ""}
                 </div>
                 {t.content}
               </div>
