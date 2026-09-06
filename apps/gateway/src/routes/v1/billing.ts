@@ -57,6 +57,14 @@ export function billingRoutes(deps: BillingDeps): Hono<AppEnv> {
       invoice,
     });
   });
+  app.get("/org", async (c) => {
+    if (!requireScope(c, "usage:read")) {
+      return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
+    }
+    const auth = c.get("auth") as AuthContext;
+    const plan = await deps.plans.get(auth.orgId).catch(() => "free");
+    return c.json({ object: "organization", org_id: auth.orgId, plan });
+  });
 
   app.post("/org/plan", async (c) => {
     if (!requireScope(c, "admin:write")) {
