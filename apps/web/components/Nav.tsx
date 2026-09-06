@@ -18,7 +18,23 @@ const LINKS = [
 export function Nav(): React.ReactElement {
   const path = usePathname();
   return (
-    <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col gap-2 border-r border-edge bg-panel/90 px-5 py-7 backdrop-blur">
+    <>
+      <nav className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b border-edge bg-panel/95 px-3 py-2 backdrop-blur lg:hidden">
+        {LINKS.map((l) => (
+          <Link
+            key={l.href}
+            href={l.href}
+            className={
+              path === l.href
+                ? "shrink-0 rounded-lg border border-edge bg-panel2 px-3 py-1.5 text-sm font-medium text-white"
+                : "shrink-0 rounded-lg border border-transparent px-3 py-1.5 text-sm font-medium text-fog"
+            }
+          >
+            {l.label}
+          </Link>
+        ))}
+      </nav>
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-2 border-r border-edge bg-panel/90 px-5 py-7 backdrop-blur lg:flex">
       <div className="mb-7 flex items-center gap-3">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-acid to-ice text-lg font-black text-void shadow-[0_0_24px_rgba(200,255,46,0.45)]">
           I
@@ -49,6 +65,7 @@ export function Nav(): React.ReactElement {
           <span className="font-mono">operational</span>
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
