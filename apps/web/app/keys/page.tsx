@@ -14,6 +14,7 @@ export default function Keys(): React.ReactElement {
   const [ready, setReady] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
   const [scopes, setScopes] = useState("chat:write,models:read,usage:read");
+  const [expiry, setExpiry] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -38,11 +39,14 @@ export default function Keys(): React.ReactElement {
   async function create(): Promise<void> {
     setError("");
     try {
+      const days = expiry.trim() === "" ? undefined : Number(expiry.trim());
       const res = await createKey(
         getKey(),
         scopes.split(",").map((s) => s.trim()).filter((s) => s !== ""),
+        days,
       );
       setRows((r) => [{ id: res.id, prefix: res.prefix, secret: res.api_key }, ...r]);
+      setExpiry("");
     } catch {
       setError("Creation failed. This key needs keys:write scope.");
     }
@@ -77,6 +81,12 @@ export default function Keys(): React.ReactElement {
             className="w-full rounded-xl border border-edge bg-[#08080a] px-3.5 py-3 font-mono text-sm outline-none focus:border-acid"
             value={scopes}
             onChange={(e) => setScopes(e.target.value)}
+          />
+          <input
+            className="w-32 shrink-0 rounded-xl border border-edge bg-[#08080a] px-3.5 py-3 font-mono text-sm outline-none focus:border-acid"
+            value={expiry}
+            onChange={(e) => setExpiry(e.target.value)}
+            placeholder="days"
           />
           <button
             className="shrink-0 rounded-xl border border-acid bg-acid px-5 py-3 text-sm font-bold text-black shadow-[0_0_24px_rgba(200,255,46,0.35)] transition hover:-translate-y-px"

@@ -84,8 +84,11 @@ export async function fetchRoutingHealth(key: string): Promise<{
   return res.json();
 }
 
-export async function createKey(key: string, scopes: string[]): Promise<{ id: string; prefix: string; api_key: string; scopes: string[] }> {
-  const res = await authed("/v1/keys", key, { method: "POST", body: JSON.stringify({ scopes }) });
+export async function createKey(key: string, scopes: string[], expiresInDays?: number): Promise<{ id: string; prefix: string; api_key: string; scopes: string[] }> {
+  const res = await authed("/v1/keys", key, {
+    method: "POST",
+    body: JSON.stringify({ scopes, ...(expiresInDays !== undefined ? { expires_in_days: expiresInDays } : {}) }),
+  });
   if (!res.ok) {
     throw new Error(`create ${res.status}`);
   }
