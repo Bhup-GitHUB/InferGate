@@ -92,6 +92,7 @@ export const requests = pgTable("requests", {
   status: text("status").notNull().default("ok"),
   error: text("error"),
   responseBody: text("response_body"),
+  region: text("region").notNull().default("home"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex("idx_requests_org_idempotency").on(t.orgId, t.idempotencyKey)]);
 
@@ -116,4 +117,13 @@ export const invoices = pgTable("invoices", {
   periodEnd: text("period_end").notNull(),
   amountUsd: numeric("amount_usd").notNull().default("0"),
   status: text("status").notNull().default("draft"),
+});
+
+export const webhooks = pgTable("webhooks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => organizations.id),
+  url: text("url").notNull(),
+  secret: text("secret").notNull(),
+  events: text("events").array().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
