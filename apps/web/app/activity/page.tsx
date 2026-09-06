@@ -40,8 +40,30 @@ export default function Activity(): React.ReactElement {
 
   return (
     <div className="mx-auto max-w-6xl flex-1 px-6 py-10 lg:px-12">
-      <h1 className="text-3xl font-extrabold tracking-tight">Activity</h1>
-      <p className="mb-8 mt-1.5 text-sm text-fog">Every request this organization served, newest first.</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight">Activity</h1>
+          <p className="mb-8 mt-1.5 text-sm text-fog">Every request this organization served, newest first.</p>
+        </div>
+        <button
+          className="mb-8 rounded-xl border border-edge bg-panel2 px-4 py-2 text-sm font-semibold transition hover:-translate-y-px"
+          onClick={() => {
+            const header = "id,created_at,model,provider,input_tokens,output_tokens,latency_ms,cost_usd,status";
+            const lines = rows.map((r) =>
+              [r.id, r.created_at, r.model, r.provider ?? "", r.input_tokens, r.output_tokens, r.latency_ms, r.cost_usd, r.status].join(","),
+            );
+            const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "infergate-activity.csv";
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          Export CSV
+        </button>
+      </div>
       <div className="rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
         <table className="w-full border-collapse text-sm">
           <thead>
