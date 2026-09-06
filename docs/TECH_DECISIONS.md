@@ -84,3 +84,32 @@ Risks: cardinality explosion on per-org labels → bound label sets, aggregate b
 Why chosen: stateless gateway scales via HPA; workers/health-probers as Deployments; PG/Redis via operators or managed services in prod; Helm for env parity.
 Alternatives: Fly/Render PaaS (simpler, less control), Nomad (smaller pool).
 Risks: K8s ops burden → start with managed PG/Redis, Helm charts from day one.
+
+## Decision: Live providers — env-keyed HTTP adapters over mocks
+
+Why chosen: same `ProviderAdapter` interface serves mocks (default, zero
+secrets) and live OpenAI/Anthropic HTTP adapters selected by
+`OPENAI_API_KEY`/`ANTHROPIC_API_KEY`. Egress-checked at boot
+(`PROVIDER_ALLOWLIST`, loopback/link-local/private-IP denial). No code
+change to switch; mixed fleets allowed per provider.
+Tradeoffs: Anthropic mapped to OpenAI shapes (token counts estimated when
+absent); per-provider timeout via `ATTEMPT_TIMEOUT_MS`.
+Future risks: provider API drift → adapter version pins + contract tests.
+
+## Decision: State — Postgres when configured, memory otherwise
+
+Why chosen: `DATABASE_URL` switches keys/usage/plans/rules/webhooks to
+parameterized PG stores with atomic idempotency (`ON CONFLICT DO NOTHING`),
+write-ahead `started` rows, and a transactional migrate runner. Memory
+stores keep local dev/test dependency-free. Verified live against PG 16.
+Tradeoffs: dual implementations to maintain; interfaces keep them honest.
+Future risks: need Redis key-cache already added; next is read replicas.
+
+## Decision: Console — Next.js 15 + Tailwind v4
+
+Why chosen: App Router client pages against the gateway (CORS-allowlisted),
+Tailwind theme tokens for the black-glass system, static prerender
+(105KB first load). Pinned Next 15 (webpack build; 16/Turbopack chokes on
+Bun-hoisted modules) and TS 5 for the web app.
+Tradeoffs: API key in localStorage (documented); SSR avoided for authed pages.
+Future risks: Next major upgrades need rebuild verification (recorded).
