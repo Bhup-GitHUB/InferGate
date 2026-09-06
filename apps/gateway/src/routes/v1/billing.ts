@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { buildInvoice, capsFor, monthWindow, rollupDaily } from "@infergate/billing";
+import { buildInvoice, capsFor, monthWindow } from "@infergate/billing";
 import { errorBody } from "@infergate/schemas";
 import type { AppEnv, AuthContext } from "../../lib/env";
 import type { PlanStore, UsageStore } from "../../lib/store";
@@ -22,12 +22,11 @@ export function billingRoutes(deps: BillingDeps): Hono<AppEnv> {
     const auth = c.get("auth") as AuthContext;
     const rawDays = Number(c.req.query("days") ?? "7");
     const days = Math.min(Math.max(Number.isFinite(rawDays) ? Math.floor(rawDays) : 7, 1), 90);
-    const now = Date.now();
-    const rows = await deps.usage.recordsByOrg(auth.orgId, now - days * 86400000).catch(() => null);
-    if (!rows) {
+    const buckets = await deps.usage.daily(auth.orgId, days, Date.now()).catch(() => null);
+    if (!buckets) {
       return c.json(errorBody("Usage unavailable", "provider_error", "usage_unavailable"), 503);
     }
-    return c.json({ object: "usage_daily", org_id: auth.orgId, days: rollupDaily(rows, days, now) });
+    return c.json({ object: "usage_daily", org_id: auth.orgId, days: buckets });
   });
 
   app.get("/billing/summary", async (c) => {

@@ -1,4 +1,5 @@
 import type { StoredKey } from "@infergate/auth";
+import { rollupDaily, type DailyBucket } from "@infergate/billing";
 
 export interface UsageRecord {
   id: string;
@@ -38,6 +39,7 @@ export interface UsageStore {
   recordsByOrg(orgId: string, sinceMs: number): Promise<UsageRecord[]>;
   periodUsage(orgId: string, sinceMs: number): Promise<{ tokens: number; spendUsd: number }>;
   recent(orgId: string, limit: number): Promise<UsageRecord[]>;
+  daily(orgId: string, days: number, now: number): Promise<DailyBucket[]>;
 }
 
 export interface PlanStore {
@@ -190,5 +192,10 @@ export class MemoryUsageStore implements UsageStore {
       .filter((r) => r.orgId === orgId)
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, Math.min(Math.max(limit, 1), 100));
+  }
+
+  async daily(orgId: string, days: number, now: number): Promise<DailyBucket[]> {
+    const rows = this.records.filter((r) => r.orgId === orgId && r.createdAt >= now - days * 86400000);
+    return rollupDaily(rows, days, now);
   }
 }

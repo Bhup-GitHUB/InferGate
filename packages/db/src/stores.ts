@@ -1,5 +1,6 @@
 import postgres from "postgres";
 import type { StoredKey } from "@infergate/auth";
+import type { DailyBucket } from "@infergate/billing";
 import type { KeyStore, UsageRecord, UsageStore } from "../../../apps/gateway/src/lib/store";
 
 export interface PgConfig {
@@ -306,6 +307,35 @@ export class PgUsageStore implements UsageStore {
       `;
       return rows.map((r) => usageFromRow(r as Record<string, unknown>));
     });
+  }
+
+  async daily(orgId: string, days: number, now: number): Promise<DailyBucket[]> {
+    const buckets = new Map<string, DailyBucket>();
+    for (let i = 0; i < days; i += 1) {
+      const key = new Date(now - i * 86400000).toISOString().slice(0, 10);
+      buckets.set(key, { date: key, requests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 });
+    }
+    const rows = await this.withRead(async (sql) => {
+      return sql`
+        SELECT to_char(created_at, 'YYYY-MM-DD') AS day, COUNT(*)::int AS requests,
+               COALESCE(SUM(input_tokens),0)::int AS input_tokens,
+               COALESCE(SUM(output_tokens),0)::int AS output_tokens,
+               COALESCE(SUM(cost_usd),0)::float AS cost_usd
+        FROM requests
+        WHERE org_id = ${orgId} AND status = 'ok' AND created_at >= ${toTs(now - days * 86400000)}
+        GROUP BY to_char(created_at, 'YYYY-MM-DD')
+      `;
+    });
+    for (const r of rows as unknown as { day: string; requests: number; input_tokens: number; output_tokens: number; cost_usd: number }[]) {
+      const bucket = buckets.get(r.day);
+      if (bucket) {
+        bucket.requests = r.requests;
+        bucket.inputTokens = r.input_tokens;
+        bucket.outputTokens = r.output_tokens;
+        bucket.costUsd = Math.round(r.cost_usd * 1e6) / 1e6;
+      }
+    }
+    return [...buckets.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
   }
 
   async ping(): Promise<boolean> {
