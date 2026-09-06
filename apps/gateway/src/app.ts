@@ -142,6 +142,11 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   app.use("*", tracingMiddleware());
   app.use("*", cors({ origin: config.allowedOrigins }));
   app.use("/v1/*", bodyLimit({ maxSize: config.bodyLimitBytes }));
+  app.notFound((c) => c.json({ error: { message: "Not found", type: "invalid_request_error", code: "not_found" } }, 404));
+  app.onError((err, c) => {
+    console.log(structuredLog({ level: "error", msg: "unhandled", error: String(err && (err as Error).message) }));
+    return c.json({ error: { message: "Internal error", type: "provider_error", code: "internal" } }, 500);
+  });
 
   app.get("/healthz", (c) => {
     if (isDraining()) {
