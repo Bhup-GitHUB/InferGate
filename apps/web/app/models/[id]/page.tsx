@@ -2,9 +2,9 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { KeyGate } from "../../components/KeyGate";
-import { getKey } from "../../lib/api";
-import { GATEWAY_URL } from "../../lib/api";
+import { KeyGate } from "../../../components/KeyGate";
+import { getKey } from "../../../lib/api";
+import { GATEWAY_URL } from "../../../lib/api";
 
 interface Detail {
   id: string;
