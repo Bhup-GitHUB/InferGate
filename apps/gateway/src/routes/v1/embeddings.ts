@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { errorBody } from "@infergate/schemas";
 import type { AppEnv, AuthContext } from "../../lib/env";
+import type { UsageStore } from "../../lib/store";
 import { requireScope } from "../../middleware/auth";
 
 const embeddingSchema = z.object({
@@ -25,7 +26,7 @@ function embed(text: string, dimensions: number): number[] {
   return out;
 }
 
-export function embeddingRoutes(): Hono<AppEnv> {
+export function embeddingRoutes(deps: { usage: UsageStore }): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
   app.post("/embeddings", async (c) => {
@@ -33,7 +34,6 @@ export function embeddingRoutes(): Hono<AppEnv> {
       return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
     }
     const auth = c.get("auth") as AuthContext;
-    void auth;
     let body: unknown;
     try {
       body = await c.req.json();
@@ -51,6 +51,19 @@ export function embeddingRoutes(): Hono<AppEnv> {
       embedding: embed(`${parsed.data.model}:${text}`, 64),
     }));
     const promptTokens = Math.ceil(inputs.join(" ").length / 4);
+    await deps.usage.insert({
+      idempotencyKey: null,
+      orgId: auth.orgId,
+      keyId: auth.keyId,
+      providerId: "local-embed",
+      model: parsed.data.model,
+      inputTokens: promptTokens,
+      outputTokens: 0,
+      latencyMs: 0,
+      costUsd: 0,
+      status: "ok",
+      error: null,
+    }).catch(() => undefined);
     return c.json({
       object: "list",
       data,

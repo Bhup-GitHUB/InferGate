@@ -11,7 +11,7 @@ export interface QuotaDeps {
   notify: Notifier;
 }
 
-const SPEND_PREFIXES = ["/v1/chat/"];
+const SPEND_PREFIXES = ["/v1/chat/", "/v1/embeddings"];
 const USAGE_TTL_MS = 5000;
 const usageCache = new Map<string, { used: { tokens: number; spendUsd: number }; at: number }>();
 const warned = new Map<string, string>();
