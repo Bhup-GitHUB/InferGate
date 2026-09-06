@@ -2,12 +2,14 @@ import { Hono } from "hono";
 import { buildInvoice, capsFor, monthWindow, rollupDaily } from "@infergate/billing";
 import { errorBody } from "@infergate/schemas";
 import type { AppEnv, AuthContext } from "../../lib/env";
-import { type PlanStore, type UsageStore } from "../../lib/store";
+import type { PlanStore, UsageStore } from "../../lib/store";
+import type { AuditLog } from "../../lib/audit";
 import { requireScope } from "../../middleware/auth";
 
 export interface BillingDeps {
   usage: UsageStore;
   plans: PlanStore;
+  audit: AuditLog;
 }
 
 export function billingRoutes(deps: BillingDeps): Hono<AppEnv> {
@@ -73,6 +75,7 @@ export function billingRoutes(deps: BillingDeps): Hono<AppEnv> {
     }
     try {
       await deps.plans.set(auth.orgId, plan);
+      await deps.audit.record(auth.orgId, auth.keyId, "org.plan", plan).catch(() => undefined);
     } catch {
       return c.json(errorBody("Unknown plan", "invalid_request_error", "invalid_plan"), 400);
     }

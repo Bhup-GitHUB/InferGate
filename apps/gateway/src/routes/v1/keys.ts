@@ -4,11 +4,13 @@ import { errorBody } from "@infergate/schemas";
 import type { GatewayConfig } from "../../lib/config";
 import type { AppEnv, AuthContext } from "../../lib/env";
 import type { KeyStore } from "../../lib/store";
+import type { AuditLog } from "../../lib/audit";
 import { requireScope } from "../../middleware/auth";
 
 export interface KeyDeps {
   keys: KeyStore;
   config: GatewayConfig;
+  audit: AuditLog;
 }
 
 export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
@@ -67,6 +69,7 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
       ...generated.record,
     };
     await deps.keys.save(record);
+    await deps.audit.record(auth.orgId, auth.keyId, "key.create", record.id).catch(() => undefined);
     return c.json({
       id: record.id,
       prefix: record.prefix,
@@ -96,6 +99,7 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
     };
     await deps.keys.save(successor);
     await deps.keys.scheduleRevoke(existing.id, now + 24 * 60 * 60 * 1000);
+    await deps.audit.record(auth.orgId, auth.keyId, "key.rotate", successor.id).catch(() => undefined);
     return c.json({
       id: successor.id,
       prefix: successor.prefix,
@@ -117,7 +121,22 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
       return c.json(errorBody("Key not found", "invalid_request_error", "key_not_found"), 404);
     }
     await deps.keys.revoke(id, Date.now());
+    await deps.audit.record(auth.orgId, auth.keyId, "key.revoke", id).catch(() => undefined);
     return c.json({ id, revoked: true });
+  });
+
+  app.get("/audit", async (c) => {
+    if (!requireScope(c, "keys:write")) {
+      return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
+    }
+    const auth = c.get("auth") as AuthContext;
+    const rawLimit = Number(c.req.query("limit") ?? "50");
+    const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 50, 1), 100);
+    const entries = await deps.audit.recent(auth.orgId, limit).catch(() => null);
+    if (!entries) {
+      return c.json(errorBody("Audit unavailable", "provider_error", "audit_unavailable"), 503);
+    }
+    return c.json({ object: "list", data: entries });
   });
 
   return app;

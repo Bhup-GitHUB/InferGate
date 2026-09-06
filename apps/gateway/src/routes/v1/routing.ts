@@ -5,6 +5,7 @@ import type { RoutingEngine, RoutingStrategy } from "@infergate/routing";
 import type { ProviderRegistry } from "@infergate/providers";
 import type { AppEnv, AuthContext } from "../../lib/env";
 import type { RuleCache } from "../../lib/rules";
+import type { AuditLog } from "../../lib/audit";
 import { requireScope } from "../../middleware/auth";
 
 const STRATEGIES: RoutingStrategy[] = ["cost", "latency", "availability", "weighted", "priority"];
@@ -21,6 +22,7 @@ export interface RoutingDeps {
   engine: RoutingEngine;
   registry: ProviderRegistry;
   rules: RuleCache;
+  audit: AuditLog;
 }
 
 export function routingRoutes(deps: RoutingDeps): Hono<AppEnv> {
@@ -78,6 +80,7 @@ export function routingRoutes(deps: RoutingDeps): Hono<AppEnv> {
     };
     try {
       await deps.rules.add(auth.orgId, rule);
+      await deps.audit.record(auth.orgId, auth.keyId, "routing.rule", `${rule.modelAlias}:${rule.strategy}`).catch(() => undefined);
     } catch {
       return c.json(errorBody("Rules unavailable", "provider_error", "rules_unavailable"), 503);
     }

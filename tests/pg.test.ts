@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { generateKey } from "@infergate/auth";
-import { createSql, PgKeyStore, PgPlanStore, PgRuleStore, PgUsageStore, PgWebhookStore } from "@infergate/db";
+import { createSql, PgAudit, PgKeyStore, PgPlanStore, PgRuleStore, PgUsageStore, PgWebhookStore } from "@infergate/db";
 
 const DATABASE_URL = process.env["TEST_DATABASE_URL"] ?? "";
 const describePg = DATABASE_URL === "" ? describe.skip : describe;
@@ -89,5 +89,16 @@ describePg("postgres stores", () => {
     expect((await hooks.list(orgId)).length).toBe(1);
     expect(await hooks.remove(orgId, hook.id)).toBe(true);
     expect((await hooks.list(orgId)).length).toBe(0);
+  });
+
+  test("audit log records and lists", async () => {
+    const audit = new PgAudit(sql!);
+    const orgId = crypto.randomUUID();
+    await sql!`INSERT INTO organizations (id, name) VALUES (${orgId}, 'pg audit')`;
+    await audit.record(orgId, null, "key.create", "key-1");
+    await audit.record(orgId, null, "org.plan", "pro");
+    const entries = await audit.recent(orgId, 10);
+    expect(entries.length).toBe(2);
+    expect(entries[0].action).toBe("org.plan");
   });
 });

@@ -5,6 +5,7 @@ import { assertWebhookUrl } from "@infergate/providers";
 import { errorBody } from "@infergate/schemas";
 import type { AppEnv, AuthContext } from "../../lib/env";
 import type { Notifier, WebhookEndpoints } from "../../lib/webhooks";
+import type { AuditLog } from "../../lib/audit";
 import { requireScope } from "../../middleware/auth";
 
 const EVENTS: WebhookEventType[] = ["quota.warning", "quota.exceeded", "provider.outage"];
@@ -18,6 +19,7 @@ const webhookSchema = z.object({
 export interface WebhookDeps {
   store: WebhookEndpoints;
   notify: Notifier;
+  audit: AuditLog;
 }
 
 export function webhookRoutes(deps: WebhookDeps): Hono<AppEnv> {
@@ -45,6 +47,7 @@ export function webhookRoutes(deps: WebhookDeps): Hono<AppEnv> {
       return c.json(errorBody("Webhook URL not allowed", "invalid_request_error", "url_denied"), 400);
     }
     const created = await deps.store.add(auth.orgId, parsed.data.url, parsed.data.secret, parsed.data.events);
+    await deps.audit.record(auth.orgId, auth.keyId, "webhook.create", created.id).catch(() => undefined);
     return c.json({ id: created.id, url: created.url, events: created.events, supported: EVENTS }, 201);
   });
 
@@ -69,6 +72,7 @@ export function webhookRoutes(deps: WebhookDeps): Hono<AppEnv> {
     if (!ok) {
       return c.json(errorBody("Webhook not found", "invalid_request_error", "webhook_not_found"), 404);
     }
+    await deps.audit.record(auth.orgId, auth.keyId, "webhook.delete", c.req.param("id")).catch(() => undefined);
     return c.json({ deleted: true });
   });
 

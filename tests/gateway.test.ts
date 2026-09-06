@@ -205,6 +205,17 @@ describe("gateway", () => {
     expect(next.status).toBe(200);
   });
 
+  test("audit feed lists admin actions", async () => {
+    const { app, publicKey } = await setup();
+    await app.request("/v1/keys", {
+      method: "POST",
+      headers: { authorization: `Bearer ${publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ scopes: ["models:read"] }),
+    });
+    const res = await app.request("/v1/audit?limit=10", { headers: { authorization: `Bearer ${publicKey}` } });
+    expect(res.status).toBe(200);
+  });
+
   test("key creation returns one-time secret", async () => {
     const { app, publicKey } = await setup();
     const res = await app.request("/v1/keys", {

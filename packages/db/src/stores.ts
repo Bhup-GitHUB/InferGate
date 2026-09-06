@@ -354,3 +354,40 @@ function webhookFromRow(row: Record<string, unknown>): StoredWebhook {
     events: row["events"] as string[],
   };
 }
+
+export interface AuditEntry {
+  id: string;
+  orgId: string;
+  actorKeyId: string | null;
+  action: string;
+  target: string | null;
+  createdAt: number;
+}
+
+export class PgAudit {
+  constructor(private sql: Sql) {}
+
+  async record(orgId: string, actorKeyId: string | null, action: string, target: string | null): Promise<void> {
+    await this.sql`
+      INSERT INTO audit_logs (org_id, actor_key_id, action, target)
+      VALUES (${orgId}, ${actorKeyId}, ${action}, ${target})
+    `.catch(() => undefined);
+  }
+
+  async recent(orgId: string, limit: number): Promise<AuditEntry[]> {
+    const rows = await this.sql`
+      SELECT * FROM audit_logs WHERE org_id = ${orgId} ORDER BY created_at DESC LIMIT ${Math.min(Math.max(limit, 1), 100)}
+    `;
+    return rows.map((r) => {
+      const row = r as Record<string, unknown>;
+      return {
+        id: row["id"] as string,
+        orgId: row["org_id"] as string,
+        actorKeyId: row["actor_key_id"] as string | null,
+        action: row["action"] as string,
+        target: row["target"] as string | null,
+        createdAt: new Date(row["created_at"] as Date).getTime(),
+      };
+    });
+  }
+}
