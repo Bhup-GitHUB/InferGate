@@ -14,6 +14,27 @@ export interface KeyDeps {
 export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
+  app.get("/keys", async (c) => {
+    if (!requireScope(c, "keys:write")) {
+      return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
+    }
+    const auth = c.get("auth") as AuthContext;
+    const keys = await deps.keys.listByOrg(auth.orgId).catch(() => null);
+    if (!keys) {
+      return c.json(errorBody("Keys unavailable", "provider_error", "keys_unavailable"), 503);
+    }
+    return c.json({
+      object: "list",
+      data: keys.map((k) => ({
+        id: k.id,
+        prefix: k.prefix,
+        scopes: k.scopes,
+        revoked: k.revokedAt !== null && k.revokedAt <= Date.now(),
+        created_at: new Date(k.createdAt).toISOString(),
+      })),
+    });
+  });
+
   app.post("/keys", async (c) => {
     if (!requireScope(c, "keys:write")) {
       return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);

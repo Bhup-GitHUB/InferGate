@@ -20,6 +20,7 @@ export interface UsageRecord {
 export interface KeyStore {
   findByPrefix(prefix: string): Promise<StoredKey | null>;
   findById(id: string): Promise<StoredKey | null>;
+  listByOrg(orgId: string): Promise<StoredKey[]>;
   save(key: StoredKey): Promise<void>;
   revoke(id: string, now: number): Promise<void>;
   scheduleRevoke(id: string, at: number): Promise<void>;
@@ -68,6 +69,10 @@ export class MemoryKeyStore implements KeyStore {
 
   async findById(id: string): Promise<StoredKey | null> {
     return this.byId.get(id) ?? null;
+  }
+
+  async listByOrg(orgId: string): Promise<StoredKey[]> {
+    return [...this.byId.values()].filter((k) => k.orgId === orgId);
   }
 
   async save(key: StoredKey): Promise<void> {

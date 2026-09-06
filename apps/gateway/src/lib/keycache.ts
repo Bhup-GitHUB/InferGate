@@ -64,6 +64,10 @@ export class CachedKeyStore implements KeyStore {
     return this.inner.findById(id);
   }
 
+  async listByOrg(orgId: string): Promise<StoredKey[]> {
+    return this.inner.listByOrg(orgId);
+  }
+
   async save(key: StoredKey): Promise<void> {
     await this.inner.save(key);
     await this.invalidate(key.prefix);

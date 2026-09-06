@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { KeyGate } from "../../components/KeyGate";
-import { createKey, getKey, revokeKey, rotateKey } from "../../lib/api";
+import { createKey, getKey, listKeys, revokeKey, rotateKey } from "../../lib/api";
 
 interface Row {
   id: string;
@@ -21,6 +21,15 @@ export default function Keys(): React.ReactElement {
       setReady(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    listKeys(getKey())
+      .then((r) => setRows(r.data.map((k) => ({ id: k.id, prefix: k.prefix, secret: null }))))
+      .catch(() => setError("Listing needs keys:write scope."));
+  }, [ready]);
 
   if (!ready) {
     return <KeyGate onReady={() => setReady(true)} />;
@@ -79,8 +88,8 @@ export default function Keys(): React.ReactElement {
         {error !== "" && <p className="text-[13px] text-red-400">{error}</p>}
       </div>
       <div className="mt-4 rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
-        <div className="mb-2 text-xs uppercase tracking-[0.12em] text-fog">Session keys</div>
-        {rows.length === 0 && <p className="text-sm text-fog">No keys created in this session yet.</p>}
+        <div className="mb-2 text-xs uppercase tracking-[0.12em] text-fog">Organization keys</div>
+        {rows.length === 0 && <p className="text-sm text-fog">No keys yet. Create one above.</p>}
         {rows.map((r) => (
           <div key={r.id} className="border-t border-edge py-3.5 first:border-t-0">
             <div className="flex items-center justify-between">

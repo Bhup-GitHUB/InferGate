@@ -209,8 +209,15 @@ export async function streamChat(
   }
 }
 
-export async function setPlan(key: string, plan: string): Promise<{ plan: string }> {
-  const res = await authed("/v1/org/plan", key, { method: "POST", body: JSON.stringify({ plan }) });
+export async function listKeys(key: string): Promise<{ data: { id: string; prefix: string; scopes: string[]; revoked: boolean; created_at: string }[] }> {
+  const res = await authed("/v1/keys", key);
+  if (!res.ok) {
+    throw new Error(`keys ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function setPlan(key: string, plan: string): Promise<{ plan: string }> {  const res = await authed("/v1/org/plan", key, { method: "POST", body: JSON.stringify({ plan }) });
   if (!res.ok) {
     throw new Error(`plan ${res.status}`);
   }
