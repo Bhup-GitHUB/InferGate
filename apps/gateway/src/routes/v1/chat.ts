@@ -192,6 +192,12 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       const onClientAbort = () => controller.abort();
       c.req.raw.signal.addEventListener("abort", onClientAbort, { once: true });
       const timeout = setTimeout(() => controller.abort(), deps.config.streamMaxDurationMs);
+      const flightKey = !req.stream && req.cache_ttl && !req.idempotency_key
+        ? `flight:${auth.orgId}:${cacheKey(auth.orgId, modelId, req.messages, req.max_tokens, req.temperature)}`
+        : null;
+      const execController = flightKey ? new AbortController() : null;
+      const execTimeout = flightKey ? setTimeout(() => execController?.abort(), deps.config.streamMaxDurationMs) : null;
+      const execSignal = flightKey && execController ? execController.signal : controller.signal;
       let begun: { id: string } | null = null;
       try {
         const startedRow = await deps.usage.begin({
@@ -248,7 +254,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
           span.setAttribute("provider", adapter.id);
           const effectiveModel = req.model === "auto" ? (AUTO_MODELS[adapter.id] ?? modelId) : modelId;
           const attemptStarted = Date.now();
-          const attempt = withAttemptTimeout(controller.signal, deps.config.attemptTimeoutMs);
+          const attempt = withAttemptTimeout(execSignal, deps.config.attemptTimeoutMs);
           try {
             const result = await adapter.chatCompletion({ ...internal, model: effectiveModel }, attempt.signal);
             const latencyMs = Date.now() - started;
@@ -269,8 +275,8 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             failWithOutage(adapter.id);
             observeProviderError(adapter.id);
             if (attempts < ordered.length) {
-              await sleep(deps.routing.backoffFor(attempts - 1), controller.signal).catch(() => undefined);
-              if (controller.signal.aborted) {
+              await sleep(deps.routing.backoffFor(attempts - 1), execSignal).catch(() => undefined);
+              if (execSignal.aborted) {
                 throw new Error("aborted");
               }
             }
@@ -281,9 +287,6 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       };
       let outcome: { result: CompletionResult; attempts: number; effectiveModel: string; latencyMs: number };
       try {
-        const flightKey = !req.stream && req.cache_ttl && !req.idempotency_key
-          ? `flight:${auth.orgId}:${cacheKey(auth.orgId, modelId, req.messages, req.max_tokens, req.temperature)}`
-          : null;
         if (flightKey) {
           let flight = flights.get(flightKey);
           if (!flight) {
@@ -294,7 +297,14 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
               () => flights.delete(flightKey),
             );
           }
-          outcome = await flight;
+          const abortWait = new Promise<never>((_, reject) => {
+            if (controller.signal.aborted) {
+              reject(new Error("aborted"));
+            } else {
+              controller.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+            }
+          });
+          outcome = await Promise.race([flight, abortWait]);
         } else {
           outcome = await execute();
         }
@@ -330,6 +340,9 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         return c.json(errorBody("Provider unavailable", "provider_error", "provider_unavailable"), 502);
       } finally {
         clearTimeout(timeout);
+        if (execTimeout) {
+          clearTimeout(execTimeout);
+        }
         c.req.raw.signal.removeEventListener("abort", onClientAbort);
         if (idemScope) {
           inflight.delete(idemScope);

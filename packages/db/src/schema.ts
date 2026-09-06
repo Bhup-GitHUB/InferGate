@@ -8,6 +8,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -79,7 +80,7 @@ export const routingRules = pgTable("routing_rules", {
 
 export const requests = pgTable("requests", {
   id: uuid("id").primaryKey().defaultRandom(),
-  idempotencyKey: text("idempotency_key").unique(),
+  idempotencyKey: text("idempotency_key"),
   orgId: uuid("org_id").notNull().references(() => organizations.id),
   keyId: uuid("key_id").references(() => apiKeys.id),
   providerId: text("provider_id"),
@@ -90,8 +91,9 @@ export const requests = pgTable("requests", {
   costUsd: numeric("cost_usd").notNull().default("0"),
   status: text("status").notNull().default("ok"),
   error: text("error"),
+  responseBody: text("response_body"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [uniqueIndex("idx_requests_org_idempotency").on(t.orgId, t.idempotencyKey)]);
 
 export const usageDaily = pgTable(
   "usage_daily",
