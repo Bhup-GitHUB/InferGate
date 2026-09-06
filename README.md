@@ -17,6 +17,9 @@ curl http://localhost:3000/v1/chat/completions \
   -d '{"model":"auto","messages":[{"role":"user","content":"Explain Kubernetes"}]}'
 ```
 
+Or use the typed client (`@infergate/client`) or any OpenAI SDK pointed
+at `$GATEWAY_URL/v1` — both are covered by integration tests.
+
 ## Console
 
 ```bash
