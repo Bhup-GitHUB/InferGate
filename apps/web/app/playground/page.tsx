@@ -29,6 +29,10 @@ function PlaygroundInner(): React.ReactElement {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
   const [provider, setProvider] = useState("");
+  const [compare, setCompare] = useState(false);
+  const [modelB, setModelB] = useState("claude-3-haiku");
+  const [cmpA, setCmpA] = useState("");
+  const [cmpB, setCmpB] = useState("");
 
   useEffect(() => {
     if (getKey() !== "") {
@@ -70,6 +74,35 @@ function PlaygroundInner(): React.ReactElement {
     setProvider("");
     const t0 = Date.now();
     const history: ChatMessage[] = [...turns.map((t) => ({ role: t.role, content: t.content }) as ChatMessage), { role: "user", content: text }];
+    if (compare && modelB !== model) {
+      setTurns((t) => [...t, { role: "user", content: text }]);
+      setInput("");
+      setCmpA("");
+      setCmpB("");
+      const runOne = async (m: string, set: (s: string) => void): Promise<void> => {
+        let acc = "";
+        await streamChat(
+          getKey(),
+          m,
+          history,
+          (token) => {
+            acc += token;
+            set(acc);
+          },
+          () => undefined,
+        );
+      };
+      try {
+        await Promise.all([runOne(model, (s) => setCmpA(s)), runOne(modelB, (s) => setCmpB(s))]);
+        const ms = Date.now() - t0;
+        setTurns((t) => [...t, { role: "assistant", content: `Compared ${model} vs ${modelB} in ${(ms / 1000).toFixed(1)}s.`, ms }]);
+      } catch {
+        setTurns((t) => [...t, { role: "assistant", content: "Compare failed. Check quota and scopes." }]);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     setTurns((t) => [...t, { role: "user", content: text }]);
     setInput("");
     let acc = "";
@@ -135,6 +168,18 @@ function PlaygroundInner(): React.ReactElement {
             ))}
           </div>
         </div>
+        {compare && (cmpA !== "" || cmpB !== "" || busy) && (
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <div className="rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
+              <div className="mb-2.5 font-mono text-xs uppercase tracking-[0.12em] text-fog">{model}</div>
+              <div className="whitespace-pre-wrap text-sm leading-relaxed">{cmpA === "" ? "…" : cmpA}</div>
+            </div>
+            <div className="rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
+              <div className="mb-2.5 font-mono text-xs uppercase tracking-[0.12em] text-fog">{modelB}</div>
+              <div className="whitespace-pre-wrap text-sm leading-relaxed">{cmpB === "" ? "…" : cmpB}</div>
+            </div>
+          </div>
+        )}
         <div>
           <div className="rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
             <div className="mb-2.5 text-xs uppercase tracking-[0.12em] text-fog">Model</div>
@@ -154,6 +199,26 @@ function PlaygroundInner(): React.ReactElement {
               <span className="h-1.5 w-1.5 rounded-full bg-acid shadow-[0_0_8px_#c8ff2e]" />
               <span className="font-mono">{provider === "" ? "auto" : provider}</span>
             </div>
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-fog">
+              <input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} />
+              Compare two models
+            </label>
+            {compare && (
+              <div className="mt-2">
+                <div className="mb-2.5 text-xs uppercase tracking-[0.12em] text-fog">Model B</div>
+                <select
+                  className="w-full rounded-xl border border-edge bg-[#08080a] px-3.5 py-3 font-mono text-sm outline-none focus:border-acid"
+                  value={modelB}
+                  onChange={(e) => setModelB(e.target.value)}
+                >
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id} · {m.owned_by}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <div className="mt-4 rounded-2xl border border-edge bg-gradient-to-b from-panel2 to-panel p-5">
             <div className="mb-2.5 text-xs uppercase tracking-[0.12em] text-fog">Prompt</div>
