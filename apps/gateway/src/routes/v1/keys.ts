@@ -24,7 +24,7 @@ export function keyRoutes(deps: KeyDeps): Hono<AppEnv> {
       const body = await c.req.json();
       if (Array.isArray((body as { scopes?: unknown }).scopes)) {
         const requested = (body as { scopes: unknown[] }).scopes.filter((s): s is string => typeof s === "string");
-        const allowed = new Set(["chat:write", "models:read", "usage:read", "billing:read", "keys:write"]);
+        const allowed = new Set(["chat:write", "models:read", "usage:read", "billing:read", "keys:write", "admin:write"]);
         scopes = [...new Set(requested.filter((s) => allowed.has(s)))];
         if (scopes.length === 0) {
           return c.json(errorBody("No valid scopes", "invalid_request_error", "invalid_scopes"), 400);

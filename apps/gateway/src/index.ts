@@ -8,7 +8,7 @@ const config = loadConfig(process.env as Record<string, string | undefined>);
 const { app, keys, db } = createApp();
 
 const seedOrg = process.env["SEED_ORG_ID"] ?? crypto.randomUUID();
-const seedScopes = (process.env["SEED_SCOPES"] ?? "chat:write,models:read,usage:read,billing:read,keys:write").split(",");
+const seedScopes = (process.env["SEED_SCOPES"] ?? "chat:write,models:read,usage:read,billing:read,keys:write,admin:write").split(",");
 const printSeed = process.env["PRINT_SEED_KEY"] === "1";
 
 if (db && process.env["DATABASE_URL"]) {

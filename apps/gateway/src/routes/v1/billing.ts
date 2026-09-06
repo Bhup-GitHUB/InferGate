@@ -57,7 +57,7 @@ export function billingRoutes(deps: BillingDeps): Hono<AppEnv> {
   });
 
   app.post("/org/plan", async (c) => {
-    if (!requireScope(c, "keys:write")) {
+    if (!requireScope(c, "admin:write")) {
       return c.json(errorBody("Insufficient scope", "authorization_error", "forbidden"), 403);
     }
     const auth = c.get("auth") as AuthContext;

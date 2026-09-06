@@ -32,7 +32,7 @@ describe("billing", () => {
   });
 
   test("org plan upgrades quota", async () => {    const handles = createApp({ API_KEY_PEPPER: PEPPER, PEPPER_VERSION: "1", RATE_LIMIT_PER_MINUTE: "1000" });
-    const g = generateKey("org_plan", ["chat:write", "keys:write", "billing:read"], PEPPER, 1);
+    const g = generateKey("org_plan", ["chat:write", "keys:write", "admin:write", "billing:read"], PEPPER, 1);
     await handles.keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...g.record });
     const headers = { authorization: `Bearer ${g.publicKey}`, "content-type": "application/json" };
     const bad = await handles.app.request("/v1/org/plan", { method: "POST", headers, body: JSON.stringify({ plan: "ultra" }) });
