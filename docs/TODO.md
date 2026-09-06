@@ -16,10 +16,8 @@
 - [x] Console: 9 Tailwind pages (overview, playground, activity, routing, models, fleet, keys, webhooks, billing)
 
 ## Next milestones
-- [x] PG-backed plans, webhooks, idempotency write-ahead, shared breaker state
-- [ ] Shared EWMA latency state in Redis
-- [ ] Idempotent replay (return original response instead of 409)
-- [ ] Billing worker draining Redis stream → `usage_daily`/`invoices` writes
-- [ ] OTLP exporter wiring + Grafana dashboards
+- [x] PG-backed plans, webhooks, idempotent replay, shared breaker+EWMA state
+- [x] OTLP exporter, Grafana dashboard, multi-region plan, region tagging
+- [ ] Billing worker draining Redis stream (gateway writes sync today)
+- [ ] Read/write PG split + regional Redis namespaces
 - [ ] Real-model load numbers + HPA tuning on staging
-- [ ] Multi-region: read replicas, pinned routing, global rate limits
