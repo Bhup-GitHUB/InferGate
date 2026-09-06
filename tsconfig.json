@@ -16,6 +16,7 @@
       "@infergate/routing": ["./packages/routing/src/index.ts"],
       "@infergate/billing": ["./packages/billing/src/index.ts"],
       "@infergate/cache": ["./packages/cache/src/index.ts"],
+      "@infergate/client": ["./packages/client/src/index.ts"],
       "@infergate/scheduler": ["./packages/scheduler/src/index.ts"],
       "@infergate/webhooks": ["./packages/webhooks/src/index.ts"]
     }
