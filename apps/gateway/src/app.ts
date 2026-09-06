@@ -89,6 +89,27 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   routing.registerProvider("openai", { costPer1k: 0.0015, aliases: ["gpt-4o-mini", "gpt-4o", "auto"] });
   routing.registerProvider("anthropic", { costPer1k: 0.0024, aliases: ["claude-3-5-sonnet", "claude-3-haiku", "auto"] });
   routing.registerProvider("local-vllm", { costPer1k: 0.0002, aliases: ["llama-3-8b", "mistral-7b", "auto"] });
+  if (redisClient) {
+    const syncBreakers = async (): Promise<void> => {
+      for (const info of registry.providers()) {
+        try {
+          const flag = await redisClient.get(`breaker:${info.id}`);
+          if (flag === "open") {
+            routing.forceOpen(info.id);
+          }
+        } catch {
+          return;
+        }
+      }
+    };
+    const timer = setInterval(() => {
+      syncBreakers().catch(() => undefined);
+    }, 5000);
+    const t = timer as unknown as { unref?: () => void };
+    if (typeof t.unref === "function") {
+      t.unref();
+    }
+  }
   const limiter = redisClient
     ? new RedisTokenBucket(redisClient, config.rateLimitPerMinute, config.rateLimitPerMinute, config.rateLimitFailOpen)
     : createRateLimiter(undefined, {

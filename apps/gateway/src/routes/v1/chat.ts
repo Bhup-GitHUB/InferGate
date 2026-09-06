@@ -78,6 +78,11 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       deps.routing.reportFailure(providerId);
       if (before !== "open" && deps.routing.circuitState(providerId) === "open") {
         deps.notify.emit(deps.webhooks, auth.orgId, "provider.outage", { provider: providerId });
+        if (deps.redis) {
+          deps.redis
+            .set(`breaker:${providerId}`, "open", "PX", deps.config.breakerCooldownMs)
+            .catch(() => undefined);
+        }
       }
     };
 

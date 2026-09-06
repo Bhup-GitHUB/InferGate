@@ -143,4 +143,13 @@ export class RoutingEngine {
   circuitState(id: string): string {
     return this.breaker(id).snapshot;
   }
+
+  forceOpen(id: string): void {
+    const b = this.breaker(id);
+    if (b.snapshot !== "open") {
+      for (let i = 0; i < this.threshold; i += 1) {
+        b.recordFailure();
+      }
+    }
+  }
 }
