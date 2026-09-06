@@ -4,6 +4,7 @@ node_modules
 apps/web/.next
 apps/web/node_modules
 docs
+!docs/openapi.json
 tests
 tmp
 *.log
