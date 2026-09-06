@@ -1,5 +1,10 @@
 # InferGate Chaos Testing — Live Gateway Experiments
 
+> Update (Postgres mode): kill -9 mid-SSE now leaves a `status='started'`
+> row instead of losing the request. Retry with the same idempotency key
+> returns 409 while fresh (<5min, treated as in-flight); verified live:
+> first request 200, replay 409.
+
 Date: 2026-09-05 (UTC)
 Host: macOS, Bun 1.3.5
 Repo: /Users/bhupeshkumar/Desktop/InferGate
