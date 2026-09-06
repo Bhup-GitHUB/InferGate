@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { assertEgressAllowed, createDefaultRegistry } from "@infergate/providers";
+import { assertEgressAllowed, createDefaultRegistry, createRegistryFromEnv } from "@infergate/providers";
 import { MemoryTokenBucket } from "@infergate/ratelimit";
 
 describe("providers", () => {
@@ -70,6 +70,20 @@ describe("egress", () => {
     expect(() => assertEgressAllowed("https://user:pass@api.openai.com/x", policy)).toThrow();
     expect(() => assertEgressAllowed("https://api.openai.com:8443/x", policy)).toThrow();
     expect(() => assertEgressAllowed("https://api.openai.com./x", policy)).not.toThrow();
+  });
+});
+
+describe("registry from env", () => {
+  test("defaults to mocks without keys", () => {
+    const { registry, live } = createRegistryFromEnv({});
+    expect(live).toEqual([]);
+    expect(registry.get("openai")).toBeDefined();
+  });
+
+  test("rejects disallowed base url", () => {
+    expect(() =>
+      createRegistryFromEnv({ OPENAI_API_KEY: "sk-test", OPENAI_BASE_URL: "http://169.254.169.254/v1", NODE_ENV: "production" }),
+    ).toThrow();
   });
 });
 
