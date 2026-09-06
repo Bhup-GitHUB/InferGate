@@ -17,6 +17,8 @@ describe("gateway", () => {
     const { app } = await setup();
     const h = await app.request("/healthz");
     expect(h.status).toBe(200);
+    expect(h.headers.get("x-request-id")).toBeString();
+    expect(h.headers.get("x-infergate-version")).toBe("0.1.0");
     const r = await app.request("/readyz");
     expect(r.status).toBe(200);
   });

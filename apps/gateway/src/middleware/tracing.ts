@@ -25,6 +25,7 @@ export function tracingMiddleware() {
     const requestId = c.req.header("x-request-id") ?? crypto.randomUUID();
     c.set("requestId", requestId);
     c.header("X-Request-Id", requestId);
+    c.header("X-InferGate-Version", "0.1.0");
     const started = Date.now();
     inflightRequests += 1;
     try {
