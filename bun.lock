@@ -60,6 +60,10 @@
       "name": "@infergate/cache",
       "version": "0.1.0",
     },
+    "packages/client": {
+      "name": "@infergate/client",
+      "version": "0.1.0",
+    },
     "packages/db": {
       "name": "@infergate/db",
       "version": "0.1.0",
@@ -225,6 +229,8 @@
     "@infergate/billing-worker": ["@infergate/billing-worker@workspace:services/billing-worker"],
 
     "@infergate/cache": ["@infergate/cache@workspace:packages/cache"],
+
+    "@infergate/client": ["@infergate/client@workspace:packages/client"],
 
     "@infergate/db": ["@infergate/db@workspace:packages/db"],
 

@@ -138,7 +138,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       if (idemScope) {
         inflight.delete(idemScope);
       }
-      c.header("Retry-After", "5");
+      c.header("Retry-After", String(Math.max(1, Math.ceil(deps.config.breakerCooldownMs / 1000))));
       return c.json(errorBody("No healthy providers available", "provider_error", "no_healthy_providers"), 503);
     }
 
