@@ -103,6 +103,17 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
           return;
         }
       }
+      try {
+        const ewma = await redisClient.hgetall("provider:ewma");
+        for (const [id, ms] of Object.entries(ewma)) {
+          const latency = Number(ms);
+          if (Number.isFinite(latency) && latency > 0) {
+            routing.ingestLatency(id, latency);
+          }
+        }
+      } catch {
+        return;
+      }
     };
     const timer = setInterval(() => {
       syncBreakers().catch(() => undefined);

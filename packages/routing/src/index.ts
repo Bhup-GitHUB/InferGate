@@ -131,6 +131,10 @@ export class RoutingEngine {
     this.breaker(id).recordSuccess();
   }
 
+  ingestLatency(id: string, latencyMs: number): void {
+    this.health.seedLatency(id, latencyMs);
+  }
+
   reportFailure(id: string): void {
     this.health.recordFailure(id);
     this.breaker(id).recordFailure();

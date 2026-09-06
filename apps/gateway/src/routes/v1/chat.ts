@@ -219,7 +219,11 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
           try {
             const result = await adapter.chatCompletion({ ...internal, model: effectiveModel }, attempt.signal);
             const latencyMs = Date.now() - started;
-            deps.routing.reportSuccess(adapter.id, Date.now() - attemptStarted);
+            const attemptLatency = Date.now() - attemptStarted;
+            deps.routing.reportSuccess(adapter.id, attemptLatency);
+            if (deps.redis) {
+              deps.redis.hset("provider:ewma", { [adapter.id]: String(attemptLatency) }).catch(() => undefined);
+            }
             if (begun) {
               await deps.usage.finish(begun.id, {
                 providerId: result.providerId,
@@ -480,7 +484,11 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
           await stream.writeSSE({ data: "[DONE]" });
           settled = true;
           if (active) {
-            deps.routing.reportSuccess(active.id, Date.now() - attemptStarted);
+            const streamLatency = Date.now() - attemptStarted;
+            deps.routing.reportSuccess(active.id, streamLatency);
+            if (deps.redis) {
+              deps.redis.hset("provider:ewma", { [active.id]: String(streamLatency) }).catch(() => undefined);
+            }
           }
         } else if (interrupted && !clientGone && active) {
           failWithOutage(active.id);

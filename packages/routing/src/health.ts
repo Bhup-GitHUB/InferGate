@@ -45,6 +45,12 @@ export class HealthTracker {
     t.samples += 1;
   }
 
+  seedLatency(id: string, latencyMs: number): void {
+    const t = this.get(id);
+    t.ewma = t.samples === 0 ? latencyMs : ALPHA * latencyMs + (1 - ALPHA) * t.ewma;
+    t.samples += 1;
+  }
+
   snapshot(id: string, circuitOpen: boolean, circuitState: string, costPer1k: number): ProviderSnapshot {
     const t = this.get(id);
     return {
