@@ -13,7 +13,7 @@ import { CachedKeyStore } from "./lib/keycache";
 import { createSql, PgKeyStore, PgPlanStore, PgRuleStore, PgUsageStore, PgWebhookStore } from "@infergate/db";
 import { authMiddleware } from "./middleware/auth";
 import { rateLimitMiddleware } from "./middleware/ratelimit";
-import { tracingMiddleware } from "./middleware/tracing";
+import { isDraining, tracingMiddleware } from "./middleware/tracing";
 import { chatRoutes } from "./routes/v1/chat";
 import { embeddingRoutes } from "./routes/v1/embeddings";
 import { modelRoutes } from "./routes/v1/models";
@@ -136,7 +136,12 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   app.use("*", cors({ origin: config.allowedOrigins }));
   app.use("/v1/*", bodyLimit({ maxSize: config.bodyLimitBytes }));
 
-  app.get("/healthz", (c) => c.json({ ok: true }));
+  app.get("/healthz", (c) => {
+    if (isDraining()) {
+      return c.json({ ok: false, draining: true }, 503);
+    }
+    return c.json({ ok: true });
+  });
   app.get("/readyz", async (c) => {
     const results: Record<string, string> = {};
     for (const info of registry.providers()) {

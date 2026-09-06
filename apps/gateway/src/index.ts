@@ -3,6 +3,7 @@ import { generateKey } from "@infergate/auth";
 import { structuredLog } from "@infergate/otel";
 import { createApp } from "./app";
 import { loadConfig } from "./lib/config";
+import { beginDrain, inflightCount } from "./middleware/tracing";
 
 const config = loadConfig(process.env as Record<string, string | undefined>);
 const { app, keys, db } = createApp();
@@ -32,6 +33,24 @@ console.log(structuredLog({ level: "info", msg: "seed_key", prefix: generated.pr
 if (printSeed) {
   process.stderr.write(`SEED_API_KEY=${generated.publicKey}\n`);
 }
+
+function shutdown(signal: string): void {
+  console.log(structuredLog({ level: "info", msg: "shutdown_start", signal }));
+  beginDrain();
+  const deadline = Date.now() + 25000;
+  const wait = (): void => {
+    if (inflightCount() === 0 || Date.now() >= deadline) {
+      console.log(structuredLog({ level: "info", msg: "shutdown_done", inflight: inflightCount() }));
+      process.exit(0);
+    } else {
+      setTimeout(wait, 250);
+    }
+  };
+  wait();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 export default {
   port: config.port,

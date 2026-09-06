@@ -54,6 +54,10 @@ spec:
               path: /healthz
               port: 3000
             periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
           readinessProbe:
             httpGet:
               path: /readyz

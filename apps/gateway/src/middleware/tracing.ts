@@ -2,13 +2,36 @@ import type { Context, Next } from "hono";
 import { structuredLog } from "@infergate/otel";
 import type { AppEnv } from "../lib/env";
 
+let inflightRequests = 0;
+let draining = false;
+
+export function inflightCount(): number {
+  return inflightRequests;
+}
+
+export function isDraining(): boolean {
+  return draining;
+}
+
+export function beginDrain(): void {
+  draining = true;
+}
+
 export function tracingMiddleware() {
   return async (c: Context<AppEnv>, next: Next) => {
+    if (draining && c.req.path !== "/healthz") {
+      return c.text("draining", 503);
+    }
     const requestId = c.req.header("x-request-id") ?? crypto.randomUUID();
     c.set("requestId", requestId);
     c.header("X-Request-Id", requestId);
     const started = Date.now();
-    await next();
+    inflightRequests += 1;
+    try {
+      await next();
+    } finally {
+      inflightRequests -= 1;
+    }
     const latencyMs = Date.now() - started;
     const line = structuredLog({
       level: "info",
