@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { generateKey } from "@infergate/auth";
 import { createRegistryFromEnv } from "@infergate/providers";
+import { createApp } from "../apps/gateway/src/app";
 
 function openaiUpstream(): Bun.Server {
   return Bun.serve({
@@ -87,6 +89,33 @@ describe("live adapters against stub upstreams", () => {
     const last = chunks[chunks.length - 1];
     expect(last.usage?.inputTokens).toBe(9);
     expect(last.usage?.outputTokens).toBe(4);
+    upstream.stop(true);
+  });
+
+  test("gateway serves live upstream with real billing", async () => {
+    const upstream = openaiUpstream();
+    const handles = createApp({
+      API_KEY_PEPPER: "live-e2e-pepper-0123456789",
+      PEPPER_VERSION: "1",
+      RATE_LIMIT_PER_MINUTE: "1000",
+      OPENAI_API_KEY: "sk-test",
+      OPENAI_BASE_URL: `http://localhost:${upstream.port}`,
+    });
+    const g = generateKey("org_live", ["chat:write", "usage:read"], "live-e2e-pepper-0123456789", 1);
+    await handles.keys.save({ id: crypto.randomUUID(), createdAt: Date.now(), ...g.record });
+    const res = await handles.app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${g.publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }], stream: true }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("hello ");
+    expect(text).toContain("world");
+    expect(text).toContain("data: [DONE]");
+    const summary = await handles.usage.usageByOrg("org_live");
+    expect(summary.inputTokens).toBe(7);
+    expect(summary.outputTokens).toBe(3);
     upstream.stop(true);
   });
 });
