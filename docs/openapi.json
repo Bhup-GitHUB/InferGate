@@ -1,0 +1,105 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "InferGate", "version": "0.1.0", "description": "OpenAI-compatible inference gateway" },
+  "servers": [{ "url": "http://localhost:3000" }],
+  "security": [{ "bearer": [] }],
+  "components": {
+    "securitySchemes": {
+      "bearer": { "type": "http", "scheme": "bearer", "description": "ig_sk_<prefix>_<secret>" }
+    },
+    "schemas": {
+      "ChatMessage": {
+        "type": "object",
+        "required": ["role", "content"],
+        "properties": {
+          "role": { "type": "string", "enum": ["system", "user", "assistant", "tool"] },
+          "content": { "type": "string" }
+        }
+      },
+      "ChatRequest": {
+        "type": "object",
+        "required": ["model", "messages"],
+        "properties": {
+          "model": { "type": "string", "example": "auto" },
+          "messages": { "type": "array", "items": { "$ref": "#/components/schemas/ChatMessage" } },
+          "stream": { "type": "boolean", "default": false },
+          "max_tokens": { "type": "integer", "minimum": 1, "maximum": 128000 },
+          "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+          "idempotency_key": { "type": "string" },
+          "cache_ttl": { "type": "integer", "minimum": 1, "maximum": 3600 }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string" },
+              "type": { "type": "string" },
+              "code": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/healthz": { "get": { "security": [], "summary": "Liveness", "responses": { "200": { "description": "ok" } } } },
+    "/readyz": { "get": { "security": [], "summary": "Readiness", "responses": { "200": { "description": "ready" }, "503": { "description": "not ready" } } } },
+    "/metrics": { "get": { "security": [], "summary": "Prometheus metrics", "responses": { "200": { "description": "metrics" } } } },
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "Chat completion, JSON or SSE",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatRequest" } } } },
+        "responses": {
+          "200": { "description": "completion or event stream" },
+          "400": { "description": "invalid request" },
+          "401": { "description": "bad key" },
+          "402": { "description": "quota exceeded" },
+          "403": { "description": "no scope" },
+          "409": { "description": "duplicate idempotency key" },
+          "429": { "description": "rate limited" },
+          "502": { "description": "provider unavailable" },
+          "503": { "description": "no healthy providers" },
+          "504": { "description": "provider timeout" }
+        }
+      }
+    },
+    "/v1/embeddings": {
+      "post": {
+        "summary": "Embeddings",
+        "responses": { "200": { "description": "embeddings" }, "400": { "description": "invalid request" } }
+      }
+    },
+    "/v1/models": { "get": { "summary": "List models", "responses": { "200": { "description": "list" } } } },
+    "/v1/models/{id}": { "get": { "summary": "Model detail", "responses": { "200": { "description": "model" }, "404": { "description": "not found" } } } },
+    "/v1/keys": {
+      "get": { "summary": "List keys", "responses": { "200": { "description": "list" } } },
+      "post": { "summary": "Mint key", "responses": { "201": { "description": "created" } } }
+    },
+    "/v1/keys/{id}/rotate": { "post": { "summary": "Rotate key", "responses": { "201": { "description": "rotated" } } } },
+    "/v1/keys/{id}/revoke": { "post": { "summary": "Revoke key", "responses": { "200": { "description": "revoked" } } } },
+    "/v1/usage": { "get": { "summary": "Usage summary", "responses": { "200": { "description": "summary" } } } },
+    "/v1/usage/daily": { "get": { "summary": "Daily usage", "responses": { "200": { "description": "daily" } } } },
+    "/v1/requests": { "get": { "summary": "Recent requests", "responses": { "200": { "description": "list" } } } },
+    "/v1/billing/summary": { "get": { "summary": "Billing summary", "responses": { "200": { "description": "summary" } } } },
+    "/v1/org": { "get": { "summary": "Org info", "responses": { "200": { "description": "org" } } } },
+    "/v1/org/plan": { "post": { "summary": "Set plan", "responses": { "200": { "description": "plan" } } } },
+    "/v1/routing/health": { "get": { "summary": "Provider health", "responses": { "200": { "description": "health" } } } },
+    "/v1/routing/rules": {
+      "get": { "summary": "List rules", "responses": { "200": { "description": "list" } } },
+      "post": { "summary": "Create rule", "responses": { "201": { "description": "created" } } }
+    },
+    "/v1/routing/rules/{id}": { "delete": { "summary": "Delete rule", "responses": { "200": { "description": "deleted" } } } },
+    "/v1/webhooks": {
+      "get": { "summary": "List webhooks", "responses": { "200": { "description": "list" } } },
+      "post": { "summary": "Add webhook", "responses": { "201": { "description": "created" } } }
+    },
+    "/v1/webhooks/{id}": { "delete": { "summary": "Delete webhook", "responses": { "200": { "description": "deleted" } } } },
+    "/v1/webhooks/deliveries": { "get": { "summary": "Delivery log", "responses": { "200": { "description": "list" } } } },
+    "/v1/scheduler/placement": { "post": { "summary": "GPU placement", "responses": { "200": { "description": "placement" } } } },
+    "/v1/scheduler/demo": { "get": { "summary": "Demo placement", "responses": { "200": { "description": "demo" } } } },
+    "/v1/audit": { "get": { "summary": "Audit log", "responses": { "200": { "description": "list" } } } }
+  }
+}
