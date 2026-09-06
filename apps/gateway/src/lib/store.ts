@@ -26,6 +26,9 @@ export interface KeyStore {
 
 export interface UsageStore {
   insert(record: Omit<UsageRecord, "id" | "createdAt">): Promise<UsageRecord>;
+  begin(record: Omit<UsageRecord, "id" | "createdAt" | "status" | "error">): Promise<{ row: UsageRecord; replayed: boolean }>;
+  finish(id: string, patch: { providerId?: string | null; model?: string; inputTokens: number; outputTokens: number; latencyMs: number; costUsd: number; status: string; error: string | null }): Promise<void>;
+  remove(id: string): Promise<void>;
   findByIdempotencyKey(orgId: string, key: string): Promise<UsageRecord | null>;
   usageByOrg(orgId: string): Promise<{ requests: number; inputTokens: number; outputTokens: number; costUsd: number }>;
   recordsByOrg(orgId: string, sinceMs: number): Promise<UsageRecord[]>;
@@ -92,6 +95,43 @@ export class MemoryUsageStore implements UsageStore {
       this.records.splice(0, this.records.length - MemoryUsageStore.MAX_ROWS);
     }
     return row;
+  }
+
+  async begin(record: Omit<UsageRecord, "id" | "createdAt" | "status" | "error">): Promise<{ row: UsageRecord; replayed: boolean }> {
+    if (record.idempotencyKey) {
+      const existing = this.records.find((r) => r.orgId === record.orgId && r.idempotencyKey === record.idempotencyKey);
+      if (existing) {
+        return { row: existing, replayed: true };
+      }
+    }
+    const row = await this.insert({ ...record, status: "started", error: null });
+    return { row, replayed: false };
+  }
+
+  async finish(id: string, patch: { providerId?: string | null; model?: string; inputTokens: number; outputTokens: number; latencyMs: number; costUsd: number; status: string; error: string | null }): Promise<void> {
+    const row = this.records.find((r) => r.id === id);
+    if (!row) {
+      return;
+    }
+    if (patch.providerId !== undefined) {
+      row.providerId = patch.providerId;
+    }
+    if (patch.model !== undefined) {
+      row.model = patch.model;
+    }
+    row.inputTokens = patch.inputTokens;
+    row.outputTokens = patch.outputTokens;
+    row.latencyMs = patch.latencyMs;
+    row.costUsd = patch.costUsd;
+    row.status = patch.status;
+    row.error = patch.error;
+  }
+
+  async remove(id: string): Promise<void> {
+    const index = this.records.findIndex((r) => r.id === id);
+    if (index >= 0) {
+      this.records.splice(index, 1);
+    }
   }
 
   async findByIdempotencyKey(orgId: string, key: string): Promise<UsageRecord | null> {

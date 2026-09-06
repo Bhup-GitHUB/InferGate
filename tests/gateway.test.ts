@@ -132,6 +132,19 @@ describe("gateway", () => {
     expect(second.status).toBe(200);
   });
 
+  test("write-ahead row survives provider failure", async () => {
+    const { app, publicKey, usage } = await setup();
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${publicKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "durable" }], idempotency_key: "durable-1" }),
+    });
+    expect(res.status).toBe(200);
+    const row = await usage.findByIdempotencyKey("org_test", "durable-1");
+    expect(row?.status).toBe("ok");
+    expect(row?.inputTokens).toBeGreaterThan(0);
+  });
+
   test("idempotent replay returns 409", async () => {
     const { app, publicKey } = await setup();
     const payload = { model: "gpt-4o-mini", messages: [{ role: "user", content: "once" }], idempotency_key: "idem-1" };

@@ -105,20 +105,14 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
     span.setAttribute("model", modelId);
 
     const idemScope = req.idempotency_key ? `${auth.orgId}:${req.idempotency_key}` : null;
-    if (idemScope) {
-      if (inflight.has(idemScope)) {
-        return c.json(errorBody("Duplicate request in flight", "invalid_request_error", "idempotent_replay"), 409);
-      }
-      const existing = await deps.usage.findByIdempotencyKey(auth.orgId, req.idempotency_key as string).catch(() => null);
-      if (existing) {
-        return c.json(errorBody("Duplicate request", "invalid_request_error", "idempotent_replay"), 409);
-      }
-      inflight.add(idemScope);
+    if (idemScope && inflight.has(idemScope)) {
+      return c.json(errorBody("Duplicate request in flight", "invalid_request_error", "idempotent_replay"), 409);
     }
 
     const orgRules = await deps.rules.forOrg(auth.orgId).catch(() => []);
     const rule = pickRule(orgRules, deps.routing.getDefaultStrategy(), auth.orgId, req.model, modelId);
-    const routingAlias = req.model === "auto" ? "auto" : modelId;    const candidateIds = deps.routing.candidatesFor(routingAlias);
+    const routingAlias = req.model === "auto" ? "auto" : modelId;
+    const candidateIds = deps.routing.candidatesFor(routingAlias);
     const ordered = deps.routing.orderCandidates(candidateIds, rule.strategy, rule).slice(0, Math.max(1, rule.maxAttempts));
     if (ordered.length === 0) {
       if (idemScope) {
@@ -178,6 +172,36 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       const onClientAbort = () => controller.abort();
       c.req.raw.signal.addEventListener("abort", onClientAbort, { once: true });
       const timeout = setTimeout(() => controller.abort(), deps.config.streamMaxDurationMs);
+      let begun: { id: string } | null = null;
+      try {
+        const startedRow = await deps.usage.begin({
+          idempotencyKey: req.idempotency_key ?? null,
+          orgId: auth.orgId,
+          keyId: auth.keyId,
+          providerId: ordered[0].providerId,
+          model: modelId,
+          inputTokens: 0,
+          outputTokens: 0,
+          latencyMs: 0,
+          costUsd: 0,
+        }).catch(() => null);
+        if (!startedRow) {
+          return c.json(errorBody("Usage unavailable", "provider_error", "usage_unavailable"), 503);
+        }
+        if (startedRow.replayed) {
+          const prior = startedRow.row;
+          const adoptable = prior.status === "started" && Date.now() - prior.createdAt > 300000;
+          if (!adoptable) {
+            return c.json(errorBody("Duplicate request", "invalid_request_error", "idempotent_replay"), 409);
+          }
+        }
+        begun = { id: startedRow.row.id };
+        if (idemScope) {
+          inflight.add(idemScope);
+        }
+      } catch {
+        return c.json(errorBody("Usage unavailable", "provider_error", "usage_unavailable"), 503);
+      }
       let attempts = 0;
       let lastAttempted = ordered[0].providerId;
       try {
@@ -196,19 +220,18 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             const result = await adapter.chatCompletion({ ...internal, model: effectiveModel }, attempt.signal);
             const latencyMs = Date.now() - started;
             deps.routing.reportSuccess(adapter.id, Date.now() - attemptStarted);
-            await deps.usage.insert({
-              idempotencyKey: req.idempotency_key ?? null,
-              orgId: auth.orgId,
-              keyId: auth.keyId,
-              providerId: result.providerId,
-              model: effectiveModel,
-              inputTokens: result.usage.inputTokens,
-              outputTokens: result.usage.outputTokens,
-              latencyMs,
-              costUsd: result.usage.costUsd,
-              status: "ok",
-              error: null,
-            });
+            if (begun) {
+              await deps.usage.finish(begun.id, {
+                providerId: result.providerId,
+                model: effectiveModel,
+                inputTokens: result.usage.inputTokens,
+                outputTokens: result.usage.outputTokens,
+                latencyMs,
+                costUsd: result.usage.costUsd,
+                status: "ok",
+                error: null,
+              }).catch(() => undefined);
+            }
             observeRequest(result.providerId, effectiveModel, latencyMs, result.usage.inputTokens, result.usage.outputTokens, result.usage.costUsd);
             if (req.cache_ttl) {
               const entry: CachedCompletion = {
@@ -254,23 +277,34 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
           }
           attempt.cancel();
         }
-        await deps.usage.insert({
-          idempotencyKey: req.idempotency_key ?? null,
-          orgId: auth.orgId,
-          keyId: auth.keyId,
-          providerId: lastAttempted,
-          model: modelId,
-          inputTokens: 0,
-          outputTokens: 0,
-          latencyMs: Date.now() - started,
-          costUsd: 0,
-          status: "error",
-          error: "provider_unavailable",
-        });
+        if (begun) {
+          await deps.usage.finish(begun.id, {
+            providerId: lastAttempted,
+            model: modelId,
+            inputTokens: 0,
+            outputTokens: 0,
+            latencyMs: Date.now() - started,
+            costUsd: 0,
+            status: "error",
+            error: "provider_unavailable",
+          }).catch(() => undefined);
+        }
         return c.json(errorBody("Provider unavailable", "provider_error", "provider_unavailable"), 502);
       } catch (err) {
         const message = err instanceof Error ? err.message : "provider_failure";
         if (message === "aborted") {
+          if (begun) {
+            await deps.usage.finish(begun.id, {
+              providerId: lastAttempted,
+              model: modelId,
+              inputTokens: 0,
+              outputTokens: 0,
+              latencyMs: Date.now() - started,
+              costUsd: 0,
+              status: "error",
+              error: "provider_timeout",
+            }).catch(() => undefined);
+          }
           return c.json(errorBody("Request timed out", "provider_error", "provider_timeout"), 504);
         }
         return c.json(errorBody("Provider unavailable", "provider_error", "provider_unavailable"), 502);
@@ -308,6 +342,30 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
       streamController.abort();
     };
     c.req.raw.signal.addEventListener("abort", onStreamClientAbort, { once: true });
+
+    const streamBegun = await deps.usage.begin({
+      idempotencyKey: req.idempotency_key ?? null,
+      orgId: auth.orgId,
+      keyId: auth.keyId,
+      providerId: ordered[0].providerId,
+      model: modelId,
+      inputTokens: 0,
+      outputTokens: 0,
+      latencyMs: 0,
+      costUsd: 0,
+    }).catch(() => null);
+    if (streamBegun && streamBegun.replayed) {
+      const prior = streamBegun.row;
+      const adoptable = prior.status === "started" && Date.now() - prior.createdAt > 300000;
+      if (!adoptable) {
+        clearTimeout(idleTimer);
+        clearTimeout(maxTimer);
+        return c.json(errorBody("Duplicate request", "invalid_request_error", "idempotent_replay"), 409);
+      }
+    }
+    if (idemScope && streamBegun) {
+      inflight.add(idemScope);
+    }
 
     return streamSSE(c, async (stream) => {
       const api = stream as unknown as { onAbort?: (fn: () => void) => void };
@@ -449,21 +507,28 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
             stream: true,
           });
         }
-        await deps.usage
-          .insert({
-            idempotencyKey: req.idempotency_key ?? null,
-            orgId: auth.orgId,
-            keyId: auth.keyId,
-            providerId: established ? winner : lastStreamAttempt,
-            model: established ? streamModel : modelId,
-            inputTokens: accInput,
-            outputTokens: accOutput,
-            latencyMs,
-            costUsd: accCost,
-            status: settled ? "ok" : "error",
-            error: settled ? null : budgetExceeded ? "quota_exceeded" : "stream_interrupted",
-          })
-          .catch(() => undefined);
+        const patch = {
+          providerId: established ? winner : lastStreamAttempt,
+          model: established ? streamModel : modelId,
+          inputTokens: accInput,
+          outputTokens: accOutput,
+          latencyMs,
+          costUsd: accCost,
+          status: settled ? "ok" : "error",
+          error: settled ? null : budgetExceeded ? "quota_exceeded" : "stream_interrupted",
+        };
+        if (streamBegun) {
+          await deps.usage.finish(streamBegun.row.id, patch).catch(() => undefined);
+        } else {
+          await deps.usage
+            .insert({
+              idempotencyKey: req.idempotency_key ?? null,
+              orgId: auth.orgId,
+              keyId: auth.keyId,
+              ...patch,
+            })
+            .catch(() => undefined);
+        }
         observeRequest(established ? winner : lastStreamAttempt, established ? streamModel : modelId, latencyMs, accInput, accOutput, accCost);
         span.end();
       }

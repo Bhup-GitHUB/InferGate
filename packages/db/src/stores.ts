@@ -165,8 +165,7 @@ function usageFromRow(row: Record<string, unknown>): UsageRecord {
 export class PgUsageStore implements UsageStore {
   constructor(private sql: Sql) {}
 
-  async insert(record: Omit<UsageRecord, "id" | "createdAt">): Promise<UsageRecord> {
-    if (record.idempotencyKey) {
+  async insert(record: Omit<UsageRecord, "id" | "createdAt">): Promise<UsageRecord> {    if (record.idempotencyKey) {
       const existing = await this.sql`
         SELECT * FROM requests WHERE org_id = ${record.orgId} AND idempotency_key = ${record.idempotencyKey} LIMIT 1
       `;
@@ -187,6 +186,44 @@ export class PgUsageStore implements UsageStore {
       SELECT * FROM requests WHERE org_id = ${record.orgId} AND idempotency_key = ${record.idempotencyKey} LIMIT 1
     `;
     return usageFromRow(raced[0] as Record<string, unknown>);
+  }
+
+  async begin(record: Omit<UsageRecord, "id" | "createdAt" | "status" | "error">): Promise<{ row: UsageRecord; replayed: boolean }> {
+    if (record.idempotencyKey) {
+      const existing = await this.findByIdempotencyKey(record.orgId, record.idempotencyKey);
+      if (existing) {
+        return { row: existing, replayed: true };
+      }
+      const rows = await this.sql`
+        INSERT INTO requests (idempotency_key, org_id, key_id, provider_id, model, input_tokens, output_tokens, latency_ms, cost_usd, status, error)
+        VALUES (${record.idempotencyKey}, ${record.orgId}, ${record.keyId}, ${record.providerId}, ${record.model}, 0, 0, 0, '0', 'started', NULL)
+        ON CONFLICT (org_id, idempotency_key) DO NOTHING
+        RETURNING *
+      `;
+      if (rows.length === 0) {
+        const raced = await this.findByIdempotencyKey(record.orgId, record.idempotencyKey);
+        return { row: raced as UsageRecord, replayed: true };
+      }
+      return { row: usageFromRow(rows[0] as Record<string, unknown>), replayed: false };
+    }
+    const started = await this.insert({ ...record, status: "started", error: null });
+    return { row: started, replayed: false };
+  }
+
+  async finish(id: string, patch: { providerId?: string | null; model?: string; inputTokens: number; outputTokens: number; latencyMs: number; costUsd: number; status: string; error: string | null }): Promise<void> {
+    await this.sql`
+      UPDATE requests
+      SET provider_id = COALESCE(${patch.providerId ?? null}, provider_id),
+          model = COALESCE(${patch.model ?? null}, model),
+          input_tokens = ${patch.inputTokens}, output_tokens = ${patch.outputTokens},
+          latency_ms = ${patch.latencyMs}, cost_usd = ${String(patch.costUsd)},
+          status = ${patch.status}, error = ${patch.error}
+      WHERE id = ${id}
+    `;
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.sql`DELETE FROM requests WHERE id = ${id}`;
   }
 
   async findByIdempotencyKey(orgId: string, key: string): Promise<UsageRecord | null> {
