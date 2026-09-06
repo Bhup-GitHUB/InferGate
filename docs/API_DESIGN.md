@@ -65,6 +65,19 @@ in `x-infergate-signature`, retries at 1s/5s/30s.
 utilization. `GET /v1/scheduler/demo` → canned A100x4 + H100x8 fleet.
 Require `models:read`.
 
+### Embeddings
+
+`POST /v1/embeddings {model, input}` → 64-dim deterministic mock vectors
+(swap for live provider embeddings before launch). Requires `chat:write`.
+
+### Misc
+
+- `POST /v1/org/plan {plan: free|pro|enterprise}` — requires `keys:write`.
+- `GET /v1/webhooks/deliveries` — recent delivery attempts, requires `keys:write`.
+- Non-stream responses carry `Server-Timing: gateway;dur=N`.
+- Streams emit an `event: infergate.route` frame first with the winning
+  `{provider, retry, model}`.
+
 ## Validation
 
 Zod strict: `model` required string, `messages` min 1 with valid roles, `max_tokens` 1..128k, `temperature` 0..2. Unknown models → 400 `model_not_found` unless `auto`.
