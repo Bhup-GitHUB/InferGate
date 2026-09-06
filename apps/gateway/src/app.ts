@@ -9,6 +9,7 @@ import { RoutingEngine, type RoutingStrategy } from "@infergate/routing";
 import { loadConfig } from "./lib/config";
 import type { AppEnv } from "./lib/env";
 import { MemoryKeyStore, MemoryUsageStore, type KeyStore, type UsageStore } from "./lib/store";
+import { CachedKeyStore } from "./lib/keycache";
 import { createSql, PgKeyStore, PgRuleStore, PgUsageStore } from "@infergate/db";
 import { authMiddleware } from "./middleware/auth";
 import { rateLimitMiddleware } from "./middleware/ratelimit";
@@ -60,6 +61,7 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
   }
   const rules = new RuleCache(ruleStore);
   const redisClient = getRedis(merged["REDIS_URL"]);
+  keys = new CachedKeyStore(keys, redisClient);
   let registry = createDefaultRegistry();
   try {
     const fromEnv = createRegistryFromEnv(merged);
