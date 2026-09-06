@@ -295,6 +295,29 @@ describe("gateway", () => {
     expect(local.status).toBe(201);
   });
 
+  test("routing rules steer strategy", async () => {
+    const { app, publicKey } = await setup();
+    const headers = { authorization: `Bearer ${publicKey}`, "content-type": "application/json" };
+    const created = await app.request("/v1/routing/rules", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ modelAlias: "auto", strategy: "cost", maxAttempts: 2 }),
+    });
+    expect(created.status).toBe(201);
+    const listed = await app.request("/v1/routing/rules", { headers: { authorization: `Bearer ${publicKey}` } });
+    expect(listed.status).toBe(200);
+    const body = await listed.json();
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].strategy).toBe("cost");
+    const chat = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model: "auto", messages: [{ role: "user", content: "cheapest please" }] }),
+    });
+    expect(chat.status).toBe(200);
+    expect(chat.headers.get("x-infergate-provider")).toBe("local-vllm");
+  });
+
   test("recent requests feed lists traffic", async () => {
     const { app, publicKey } = await setup();
     await app.request("/v1/chat/completions", {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { generateKey } from "@infergate/auth";
-import { createSql, PgKeyStore, PgUsageStore } from "@infergate/db";
+import { createSql, PgKeyStore, PgRuleStore, PgUsageStore } from "@infergate/db";
 
 const DATABASE_URL = process.env["TEST_DATABASE_URL"] ?? "";
 const describePg = DATABASE_URL === "" ? describe.skip : describe;
@@ -55,5 +55,25 @@ describePg("postgres stores", () => {
     const recent = await usage.recent(orgId, 10);
     expect(recent.length).toBe(1);
     expect(await usage.ping()).toBe(true);
+  });
+
+  test("routing rules persist per org", async () => {
+    const rules = new PgRuleStore(sql!);
+    const orgId = crypto.randomUUID();
+    await sql!`INSERT INTO organizations (id, name) VALUES (${orgId}, 'pg rules')`;
+    const created = await rules.create({
+      orgId,
+      modelAlias: "auto",
+      strategy: "cost",
+      weights: {},
+      priority: [],
+      maxAttempts: 2,
+    });
+    expect(created.id).toBeString();
+    const listed = await rules.list(orgId);
+    expect(listed.length).toBe(1);
+    expect(listed[0].strategy).toBe("cost");
+    expect(await rules.remove(orgId, created.id)).toBe(true);
+    expect(await rules.remove(orgId, created.id)).toBe(false);
   });
 });
