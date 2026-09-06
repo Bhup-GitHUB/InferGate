@@ -8,6 +8,9 @@
 > Update (replay): completed non-stream requests replay the original 200
 > (hash-bound, `x-infergate-replay: true`) with a single DB row — verified
 > live against Postgres.
+>
+> Update (fuzz): 8 malformed bodies + garbage key against live gateway →
+> all 400/401, zero 5xx, zero crashes, zero error logs.
 
 Date: 2026-09-05 (UTC)
 Host: macOS, Bun 1.3.5
