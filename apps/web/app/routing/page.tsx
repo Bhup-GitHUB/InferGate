@@ -27,6 +27,7 @@ export default function Routing(): React.ReactElement {
   const [alias, setAlias] = useState("auto");
   const [strategy, setStrategy] = useState("availability");
   const [priority, setPriority] = useState("");
+  const [weights, setWeights] = useState("");
   const [error, setError] = useState("");
 
   async function refresh(): Promise<void> {
@@ -88,16 +89,32 @@ export default function Routing(): React.ReactElement {
             onChange={(e) => setPriority(e.target.value)}
             placeholder="priority: openai,anthropic"
           />
+          <input
+            className="w-full rounded-xl border border-edge bg-[#08080a] px-3.5 py-3 font-mono text-sm outline-none focus:border-acid"
+            value={weights}
+            onChange={(e) => setWeights(e.target.value)}
+            placeholder='weights: {"openai":3}'
+          />
           <button
             className="rounded-xl border border-acid bg-acid px-5 py-3 text-sm font-bold text-black transition hover:-translate-y-px"
             onClick={async () => {
               setError("");
+              let parsedWeights: Record<string, number> = {};
+              if (weights.trim() !== "") {
+                try {
+                  parsedWeights = JSON.parse(weights) as Record<string, number>;
+                } catch {
+                  setError("Weights must be JSON like {\"openai\":3}.");
+                  return;
+                }
+              }
               const res = await authed(getKey(), "/v1/routing/rules", {
                 method: "POST",
                 body: JSON.stringify({
                   modelAlias: alias.trim() || "auto",
                   strategy,
                   priority: priority.split(",").map((s) => s.trim()).filter((s) => s !== ""),
+                  weights: parsedWeights,
                 }),
               });
               if (!res.ok) {

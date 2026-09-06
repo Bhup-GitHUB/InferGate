@@ -33,6 +33,13 @@ describe("routing", () => {
     expect(ordered[0].providerId).toBe("local-vllm");
   });
 
+  test("weighted strategy follows weights", () => {
+    const e = engine();
+    const rule = { orgId: null, modelAlias: "auto", strategy: "weighted" as const, weights: { anthropic: 10, openai: 1 }, priority: [], maxAttempts: 3 };
+    const ordered = e.orderCandidates(["openai", "anthropic", "local-vllm"], "weighted", rule);
+    expect(ordered[0].providerId).toBe("anthropic");
+  });
+
   test("priority strategy follows rule order", () => {
     const e = engine();
     e.setRules([{ orgId: null, modelAlias: "auto", strategy: "priority", weights: {}, priority: ["anthropic", "openai"], maxAttempts: 2 }]);
