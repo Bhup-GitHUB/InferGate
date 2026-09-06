@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/", label: "Overview" },
   { href: "/playground", label: "Playground" },
   { href: "/activity", label: "Activity" },
+  { href: "/routing", label: "Routing" },
   { href: "/models", label: "Models" },
   { href: "/fleet", label: "GPU Fleet" },
   { href: "/keys", label: "API Keys" },
