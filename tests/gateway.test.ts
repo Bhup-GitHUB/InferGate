@@ -80,14 +80,24 @@ describe("gateway", () => {
     expect(res.status).toBe(400);
   });
 
-  test("chat completion rejects invalid body", async () => {
+  test("chat completion rejects invalid bodies", async () => {
     const { app, publicKey } = await setup();
-    const res = await app.request("/v1/chat/completions", {
-      method: "POST",
-      headers: { authorization: `Bearer ${publicKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: "gpt-4o-mini", messages: [] }),
-    });
-    expect(res.status).toBe(400);
+    const headers = { authorization: `Bearer ${publicKey}`, "content-type": "application/json" };
+    const bad = [
+      "{}",
+      "[]",
+      JSON.stringify({ model: "", messages: [] }),
+      JSON.stringify({ model: "x", messages: [{ role: "alien", content: "x" }] }),
+      JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "x" }], temperature: 99 }),
+      JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "x" }], max_tokens: -5 }),
+      JSON.stringify({ model: "gpt-4o-mini" }),
+    ];
+    for (const body of bad) {
+      const res = await app.request("/v1/chat/completions", { method: "POST", headers, body });
+      expect(res.status).toBe(400);
+    }
+    const notJson = await app.request("/v1/chat/completions", { method: "POST", headers, body: "notjson" });
+    expect(notJson.status).toBe(400);
   });
 
   test("sse stream ends with DONE", async () => {
