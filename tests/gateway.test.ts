@@ -162,6 +162,20 @@ describe("gateway", () => {
     expect(second.status).toBe(200);
   });
 
+  test("concurrent same-key requests serialize", async () => {
+    const { app, publicKey, usage } = await setup();
+    const headers = { authorization: `Bearer ${publicKey}`, "content-type": "application/json" };
+    const body = JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "race" }], idempotency_key: "race-1" });
+    const [a, b] = await Promise.all([
+      app.request("/v1/chat/completions", { method: "POST", headers, body }),
+      app.request("/v1/chat/completions", { method: "POST", headers, body }),
+    ]);
+    const sorted = [a.status, b.status].sort();
+    expect(sorted).toEqual([200, 409]);
+    const summary = await usage.usageByOrg("org_test");
+    expect(summary.requests).toBe(1);
+  });
+
   test("replay with different body is rejected", async () => {
     const { app, publicKey } = await setup();
     const headers = { authorization: `Bearer ${publicKey}`, "content-type": "application/json" };
