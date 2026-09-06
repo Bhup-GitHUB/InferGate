@@ -144,7 +144,12 @@ export default function Playground(): React.ReactElement {
               className="min-h-[110px] w-full resize-y rounded-xl border border-edge bg-[#08080a] px-3.5 py-3 text-sm leading-relaxed outline-none focus:border-acid"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Explain black holes like I am five…"
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  send();
+                }
+              }}
+              placeholder="Explain black holes like I am five… (⌘↵ to send)"
             />
             <button
               className="mt-3 w-full rounded-xl border border-acid bg-acid px-5 py-3 text-sm font-bold text-black shadow-[0_0_24px_rgba(200,255,46,0.35)] transition hover:-translate-y-px disabled:opacity-60"
