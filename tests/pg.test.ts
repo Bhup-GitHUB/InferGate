@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { generateKey } from "@infergate/auth";
-import { createSql, PgKeyStore, PgRuleStore, PgUsageStore } from "@infergate/db";
+import { createSql, PgKeyStore, PgPlanStore, PgRuleStore, PgUsageStore, PgWebhookStore } from "@infergate/db";
 
 const DATABASE_URL = process.env["TEST_DATABASE_URL"] ?? "";
 const describePg = DATABASE_URL === "" ? describe.skip : describe;
@@ -75,5 +75,19 @@ describePg("postgres stores", () => {
     expect(listed[0].strategy).toBe("cost");
     expect(await rules.remove(orgId, created.id)).toBe(true);
     expect(await rules.remove(orgId, created.id)).toBe(false);
+  });
+
+  test("plans and webhooks persist", async () => {
+    const plans = new PgPlanStore(sql!);
+    const hooks = new PgWebhookStore(sql!);
+    const orgId = crypto.randomUUID();
+    expect(await plans.get(orgId)).toBe("free");
+    await plans.set(orgId, "pro");
+    expect(await plans.get(orgId)).toBe("pro");
+    const hook = await hooks.add(orgId, "https://example.com/hook", "secret-0123456789abcdef", ["provider.outage"]);
+    expect(hook.id).toBeString();
+    expect((await hooks.list(orgId)).length).toBe(1);
+    expect(await hooks.remove(orgId, hook.id)).toBe(true);
+    expect((await hooks.list(orgId)).length).toBe(0);
   });
 });
