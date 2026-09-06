@@ -4,7 +4,7 @@ import { cors } from "hono/cors";
 import { createRateLimiter } from "@infergate/ratelimit";
 import { getRedis, RedisTokenBucket } from "@infergate/cache";
 import { renderPrometheus, structuredLog } from "@infergate/otel";
-import { createDefaultRegistry } from "@infergate/providers";
+import { createDefaultRegistry, createRegistryFromEnv } from "@infergate/providers";
 import { RoutingEngine, type RoutingStrategy } from "@infergate/routing";
 import { loadConfig } from "./lib/config";
 import type { AppEnv } from "./lib/env";
@@ -59,8 +59,17 @@ export function createApp(env: Record<string, string | undefined> = {}): AppHand
     ruleStore = new PgRuleStore(sql);
   }
   const rules = new RuleCache(ruleStore);
-  const registry = createDefaultRegistry();
   const redisClient = getRedis(merged["REDIS_URL"]);
+  let registry = createDefaultRegistry();
+  try {
+    const fromEnv = createRegistryFromEnv(merged);
+    registry = fromEnv.registry;
+    if (fromEnv.live.length > 0) {
+      console.log(structuredLog({ level: "info", msg: "live_providers", providers: fromEnv.live.join(",") }));
+    }
+  } catch (err) {
+    console.log(structuredLog({ level: "error", msg: "live_provider_rejected", error: String(err) }));
+  }
   if (!redisClient && (merged["NODE_ENV"] ?? "development") === "production") {
     console.log(structuredLog({ level: "warn", msg: "redis_unset_rate_limits_local_only" }));
   }
