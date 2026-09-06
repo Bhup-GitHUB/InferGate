@@ -104,6 +104,7 @@ export function createOpenAICompatibleProvider(options: HttpProviderOptions): Pr
             max_tokens: req.maxTokens,
             temperature: req.temperature,
             stream: true,
+            stream_options: { include_usage: true },
           }),
           signal,
         }),
@@ -117,6 +118,8 @@ export function createOpenAICompatibleProvider(options: HttpProviderOptions): Pr
       const decoder = new TextDecoder();
       let buffer = "";
       let text = "";
+      let streamedInput = 0;
+      let streamedOutput = 0;
       const inputTokens = req.messages.reduce((n, m) => n + estimateTokens(m.content), 0);
       for (;;) {
         const { done, value } = await reader.read();
@@ -140,7 +143,11 @@ export function createOpenAICompatibleProvider(options: HttpProviderOptions): Pr
               continue;
             }
             try {
-              const payload = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] };
+              const payload = JSON.parse(data) as { choices?: { delta?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+              if (payload.usage) {
+                streamedInput = payload.usage.prompt_tokens ?? streamedInput;
+                streamedOutput = payload.usage.completion_tokens ?? streamedOutput;
+              }
               const delta = payload.choices?.[0]?.delta?.content ?? "";
               if (delta !== "") {
                 text += delta;
@@ -152,14 +159,15 @@ export function createOpenAICompatibleProvider(options: HttpProviderOptions): Pr
           }
         }
       }
-      const outputTokens = estimateTokens(text);
+      const outputTokens = streamedOutput > 0 ? streamedOutput : estimateTokens(text);
+      const finalInput = streamedInput > 0 ? streamedInput : inputTokens;
       yield {
         delta: "",
         done: true,
         usage: {
-          inputTokens,
+          inputTokens: finalInput,
           outputTokens,
-          costUsd: (inputTokens / 1000) * options.inputPricePer1k + (outputTokens / 1000) * options.outputPricePer1k,
+          costUsd: (finalInput / 1000) * options.inputPricePer1k + (outputTokens / 1000) * options.outputPricePer1k,
           latencyMs: 0,
         },
       };
@@ -270,6 +278,8 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Prov
       const decoder = new TextDecoder();
       let buffer = "";
       let text = "";
+      let streamedInput = 0;
+      let streamedOutput = 0;
       const inputTokens = req.messages.reduce((n, m) => n + estimateTokens(m.content), 0);
       for (;;) {
         const { done, value } = await reader.read();
@@ -292,11 +302,17 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Prov
               data = line.slice(5).trim();
             }
           }
-          if (event !== "content_block_delta" || data === "") {
+          if (event !== "content_block_delta" && event !== "message_start" && event !== "message_delta") {
             continue;
           }
           try {
-            const payload = JSON.parse(data) as { delta?: { text?: string } };
+            const payload = JSON.parse(data) as { delta?: { text?: string }; message?: { usage?: { input_tokens?: number } }; usage?: { output_tokens?: number } };
+            if (payload.message?.usage?.input_tokens) {
+              streamedInput = payload.message.usage.input_tokens;
+            }
+            if (payload.usage?.output_tokens) {
+              streamedOutput = payload.usage.output_tokens;
+            }
             const delta = payload.delta?.text ?? "";
             if (delta !== "") {
               text += delta;
@@ -307,14 +323,15 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Prov
           }
         }
       }
-      const outputTokens = estimateTokens(text);
+      const outputTokens = streamedOutput > 0 ? streamedOutput : estimateTokens(text);
+      const finalInput = streamedInput > 0 ? streamedInput : inputTokens;
       yield {
         delta: "",
         done: true,
         usage: {
-          inputTokens,
+          inputTokens: finalInput,
           outputTokens,
-          costUsd: (inputTokens / 1000) * options.inputPricePer1k + (outputTokens / 1000) * options.outputPricePer1k,
+          costUsd: (finalInput / 1000) * options.inputPricePer1k + (outputTokens / 1000) * options.outputPricePer1k,
           latencyMs: Date.now() - started,
         },
       };
