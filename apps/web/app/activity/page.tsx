@@ -68,7 +68,7 @@ export default function Activity(): React.ReactElement {
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr>
-              {["Time", "Model", "Provider", "Tokens", "Latency", "Cost", "Status"].map((h) => (
+              {["Time", "Model", "Provider", "Tokens", "Latency", "Cost", "Status", ""].map((h) => (
                 <th key={h} className="border-b border-edge px-3 py-2.5 text-left text-[11px] uppercase tracking-[0.1em] text-fog">
                   {h}
                 </th>
@@ -99,6 +99,17 @@ export default function Activity(): React.ReactElement {
                     />
                     {r.status}
                   </span>
+                </td>
+                <td className="border-b border-[#141418] px-3 py-3">
+                  <button
+                    className="rounded-lg border border-edge px-2.5 py-1 font-mono text-xs text-fog hover:text-white"
+                    onClick={() => {
+                      const snippet = `curl $GATEWAY_URL/v1/chat/completions -H "authorization: Bearer $KEY" -H "content-type: application/json" -d '{"model":"${r.model}","messages":[{"role":"user","content":"replay"}]}'`;
+                      navigator.clipboard?.writeText(snippet).catch(() => undefined);
+                    }}
+                  >
+                    curl
+                  </button>
                 </td>
               </tr>
             ))}
