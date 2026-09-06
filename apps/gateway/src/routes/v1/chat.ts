@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import { createHash } from "node:crypto";
 import { chatCompletionRequestSchema, errorBody } from "@infergate/schemas";
 import { observeProviderError, observeRequest, startSpan } from "@infergate/otel";
 import type { ProviderAdapter, ProviderRegistry } from "@infergate/providers";
@@ -30,8 +31,25 @@ const AUTO_MODELS: Record<string, string> = {
   "local-vllm": "llama-3-8b",
 };
 
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
+const MAX_REPLAY_BYTES = 65536;
+
+function requestHash(model: string, messages: unknown, maxTokens: unknown, temperature: unknown): string {
+  return createHash("sha256").update(JSON.stringify({ model, messages, maxTokens, temperature })).digest("hex");
+}
+
+function safeEnvelope(raw: string): { h: string; r: unknown } | null {
+  try {
+    const parsed = JSON.parse(raw) as { h?: unknown; r?: unknown };
+    if (typeof parsed.h !== "string" || parsed.r === undefined) {
+      return null;
+    }
+    return { h: parsed.h, r: parsed.r };
+  } catch {
+    return null;
+  }
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {  return new Promise<void>((resolve, reject) => {
     if (signal.aborted) {
       reject(new Error("aborted"));
       return;
@@ -191,8 +209,12 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
         if (startedRow.replayed) {
           const prior = startedRow.row;
           if (prior.status === "ok" && prior.responseBody) {
-            c.header("x-infergate-replay", "true");
-            return c.json(JSON.parse(prior.responseBody) as Record<string, unknown>);
+            const envelope = safeEnvelope(prior.responseBody);
+            const want = requestHash(req.model, req.messages, req.max_tokens, req.temperature);
+            if (envelope && envelope.h === want) {
+              c.header("x-infergate-replay", "true");
+              return c.json(envelope.r as Record<string, unknown>);
+            }
           }
           const adoptable = prior.status === "started" && Date.now() - prior.createdAt > 300000;
           if (!adoptable) {
@@ -254,6 +276,10 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
               },
             };
             if (begun) {
+              const envelope = JSON.stringify({
+                h: requestHash(req.model, req.messages, req.max_tokens, req.temperature),
+                r: payload,
+              });
               await deps.usage.finish(begun.id, {
                 providerId: result.providerId,
                 model: effectiveModel,
@@ -263,7 +289,7 @@ export function chatRoutes(deps: ChatDeps): Hono<AppEnv> {
                 costUsd: result.usage.costUsd,
                 status: "ok",
                 error: null,
-                responseBody: JSON.stringify(payload),
+                responseBody: envelope.length > MAX_REPLAY_BYTES ? null : envelope,
               }).catch(() => undefined);
             }
             c.header("x-infergate-provider", result.providerId);

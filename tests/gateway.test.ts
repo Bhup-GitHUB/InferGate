@@ -132,6 +132,23 @@ describe("gateway", () => {
     expect(second.status).toBe(200);
   });
 
+  test("replay with different body is rejected", async () => {
+    const { app, publicKey } = await setup();
+    const headers = { authorization: `Bearer ${publicKey}`, "content-type": "application/json" };
+    const first = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "same key" }], idempotency_key: "idem-hash" }),
+    });
+    expect(first.status).toBe(200);
+    const second = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "different body" }], idempotency_key: "idem-hash" }),
+    });
+    expect(second.status).toBe(409);
+  });
+
   test("write-ahead row survives provider failure", async () => {
     const { app, publicKey, usage } = await setup();
     const res = await app.request("/v1/chat/completions", {
