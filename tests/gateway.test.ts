@@ -27,6 +27,17 @@ describe("gateway", () => {
     expect(res.status).toBe(401);
   });
 
+  test("model detail shows pricing", async () => {
+    const { app, publicKey } = await setup();
+    const res = await app.request("/v1/models/gpt-4o-mini", { headers: { authorization: `Bearer ${publicKey}` } });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.pricing.input_per_1k).toBe(0.0005);
+    expect(body.context_window).toBe(128000);
+    const missing = await app.request("/v1/models/nope", { headers: { authorization: `Bearer ${publicKey}` } });
+    expect(missing.status).toBe(404);
+  });
+
   test("models list requires scope", async () => {
     const { app, publicKey } = await setup();
     const res = await app.request("/v1/models", { headers: { authorization: `Bearer ${publicKey}` } });

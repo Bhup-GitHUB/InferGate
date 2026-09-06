@@ -13,16 +13,19 @@ export interface ModelEntry {
   ownedBy: string;
   providerId: string;
   enabled: boolean;
+  inputPricePer1k: number;
+  outputPricePer1k: number;
+  contextWindow: number;
 }
 
 const DEFAULT_MODELS: ModelEntry[] = [
-  { id: "gpt-4o-mini", ownedBy: "openai", providerId: "openai", enabled: true },
-  { id: "gpt-4o", ownedBy: "openai", providerId: "openai", enabled: true },
-  { id: "claude-3-5-sonnet", ownedBy: "anthropic", providerId: "anthropic", enabled: true },
-  { id: "claude-3-haiku", ownedBy: "anthropic", providerId: "anthropic", enabled: true },
-  { id: "llama-3-8b", ownedBy: "local-vllm", providerId: "local-vllm", enabled: true },
-  { id: "mistral-7b", ownedBy: "local-vllm", providerId: "local-vllm", enabled: true },
-  { id: "auto", ownedBy: "infergate", providerId: "openai", enabled: true },
+  { id: "gpt-4o-mini", ownedBy: "openai", providerId: "openai", enabled: true, inputPricePer1k: 0.0005, outputPricePer1k: 0.0015, contextWindow: 128000 },
+  { id: "gpt-4o", ownedBy: "openai", providerId: "openai", enabled: true, inputPricePer1k: 0.005, outputPricePer1k: 0.015, contextWindow: 128000 },
+  { id: "claude-3-5-sonnet", ownedBy: "anthropic", providerId: "anthropic", enabled: true, inputPricePer1k: 0.003, outputPricePer1k: 0.015, contextWindow: 200000 },
+  { id: "claude-3-haiku", ownedBy: "anthropic", providerId: "anthropic", enabled: true, inputPricePer1k: 0.0008, outputPricePer1k: 0.0024, contextWindow: 200000 },
+  { id: "llama-3-8b", ownedBy: "local-vllm", providerId: "local-vllm", enabled: true, inputPricePer1k: 0.0001, outputPricePer1k: 0.0002, contextWindow: 8192 },
+  { id: "mistral-7b", ownedBy: "local-vllm", providerId: "local-vllm", enabled: true, inputPricePer1k: 0.0001, outputPricePer1k: 0.0002, contextWindow: 32768 },
+  { id: "auto", ownedBy: "infergate", providerId: "openai", enabled: true, inputPricePer1k: 0.0005, outputPricePer1k: 0.0015, contextWindow: 128000 },
 ];
 
 export class ProviderRegistry {
