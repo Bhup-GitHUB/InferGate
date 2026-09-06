@@ -81,6 +81,14 @@ export function Nav(): React.ReactElement {
           <span className="h-1.5 w-1.5 rounded-full bg-acid shadow-[0_0_8px_#c8ff2e]" />
           <span className="font-mono">operational · {region}</span>
         </div>
+        <a
+          className="mt-2 block font-mono text-xs text-fog hover:text-white"
+          href={`${GATEWAY_URL}/v1/openapi.json`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          openapi.json →
+        </a>
       </div>
       </aside>
     </>
