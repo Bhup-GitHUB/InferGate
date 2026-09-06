@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { KeyGate } from "../components/KeyGate";
-import { fetchBilling, fetchDaily, fetchRoutingHealth, fetchUsage, getKey } from "../lib/api";
+import { fetchBilling, fetchDaily, fetchRoutingHealth, fetchUsage, getKey, GATEWAY_URL } from "../lib/api";
 
 interface Daily {
   date: string;
@@ -17,6 +17,7 @@ export default function Overview(): React.ReactElement {
   const [daily, setDaily] = useState<Daily[]>([]);
   const [providers, setProviders] = useState<{ id: string; circuit: string; kind: string; ewmaLatencyMs: number; errorRate: number }[]>([]);
   const [error, setError] = useState("");
+  const [demoBusy, setDemoBusy] = useState(false);
 
   const load = useCallback(async () => {
     const key = getKey();
@@ -80,8 +81,37 @@ export default function Overview(): React.ReactElement {
 
   return (
     <div className="mx-auto max-w-6xl flex-1 px-6 py-10 lg:px-12">
-      <h1 className="text-3xl font-extrabold tracking-tight">Good evening, builder.</h1>
-      <p className="mb-8 mt-1.5 text-sm text-fog">Live traffic across every provider behind one OpenAI-compatible endpoint.</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight">Good evening, builder.</h1>
+          <p className="mb-8 mt-1.5 text-sm text-fog">Live traffic across every provider behind one OpenAI-compatible endpoint.</p>
+        </div>
+        <button
+          className="mb-8 rounded-xl border border-acid bg-acid px-5 py-2.5 text-sm font-bold text-black transition hover:-translate-y-px disabled:opacity-60"
+          disabled={demoBusy}
+          onClick={async () => {
+            setDemoBusy(true);
+            try {
+              await Promise.all(
+                ["auto", "gpt-4o-mini", "llama-3-8b"].map((model) =>
+                  fetch(`${GATEWAY_URL}/v1/chat/completions`, {
+                    method: "POST",
+                    headers: { authorization: `Bearer ${getKey()}`, "content-type": "application/json" },
+                    body: JSON.stringify({ model, messages: [{ role: "user", content: "Demo traffic ping" }] }),
+                  }),
+                ),
+              );
+              await load();
+            } catch {
+              setError("Demo traffic failed.");
+            } finally {
+              setDemoBusy(false);
+            }
+          }}
+        >
+          {demoBusy ? "Sending…" : "Send demo traffic"}
+        </button>
+      </div>
       {error !== "" && <div className="mb-4 rounded-2xl border border-[#4a2323] bg-panel p-5">{error}</div>}
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         {stats.map((s) => (
