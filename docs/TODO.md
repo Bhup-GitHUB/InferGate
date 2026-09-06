@@ -1,35 +1,24 @@
 # TODO
 
-## Phase 1 — Foundation (in progress)
-- [x] Tech due diligence (Hono, Drizzle, SSE)
-- [x] Docs: TECH_DECISIONS, ARCHITECTURE, SYSTEM_DESIGN, DATABASE_DESIGN, API_DESIGN, SECURITY
-- [ ] Plan review (Architecture Agent)
-- [ ] Implement: repo scaffolding, auth, schemas, providers, gateway routes, db migrations, tests
-- [ ] Code review + testing + security review + commit
+## Shipped
+- [x] Phase 1 — Foundation: gateway, auth (HMAC+salt+pepper), OpenAI APIs, SSE, mocks
+- [x] Phase 2 — Routing: 5 strategies, EWMA health, breakers, failover, org rules API
+- [x] Phase 3 — Billing: quotas (402 + stream budget), daily rollups, summaries, invoices, plans
+- [x] Phase 4 — Distributed: Redis LUA limiter, response cache, locks, PG stores + migrate runner
+- [x] Phase 5 — Observability: Prometheus metrics (gated), structured logs, Server-Timing, tracing spans
+- [x] Phase 6 — Kubernetes: gateway Dockerfile, Helm chart (HPA, probes, secrets)
+- [x] Phase 7 — Scheduler sim + placement API + fleet page
+- [x] Phase 8 — Security audit + SSRF/egress/scope fixes
+- [x] Phase 9 — Tests (74), load harness (635 rps), perf profile (single-digit ms overhead)
+- [x] Phase 10 — Chaos tests with live evidence
+- [x] Live providers: OpenAI + Anthropic HTTP adapters behind env keys + egress guard
+- [x] Webhooks: HMAC-signed quota/outage alerts + deliveries log
+- [x] Console: 9 Tailwind pages (overview, playground, activity, routing, models, fleet, keys, webhooks, billing)
 
-## Phase 2 — Routing engine
-- [x] Cost/latency/availability/weighted/priority routing, health checks, circuit breakers, retries
-
-## Phase 3 — Billing
-- [ ] Token tracking, quotas, usage APIs, aggregation, idempotency
-
-## Phase 4 — Distributed systems
-- [ ] Redis rate limiting, caching, locks, background workers
-
-## Phase 5 — Observability
-- [ ] OTel traces, Prometheus metrics, structured logging
-
-## Phase 6 — Kubernetes
-- [ ] Docker, manifests, Helm, autoscaling
-
-## Phase 7 — Model scheduler
-- [ ] Fake GPU servers, placement logic
-
-## Phase 8 — Security audit
-- [ ] External-style audit + fixes
-
-## Phase 9 — Testing
-- [ ] Unit/integration/e2e + load (1k concurrent, 10k req/min)
-
-## Phase 10 — Chaos engineering
-- [ ] Outage/failure injection + recovery docs
+## Next milestones
+- [ ] Shared breaker/EWMA state in Redis; Redis key cache (fail-open reads)
+- [ ] PG-backed plans, webhooks, idempotency replay (return original response)
+- [ ] Billing worker draining Redis stream → `usage_daily`/`invoices` writes
+- [ ] OTLP exporter wiring + Grafana dashboards
+- [ ] Real-model load numbers + HPA tuning on staging
+- [ ] Multi-region: read replicas, pinned routing, global rate limits
