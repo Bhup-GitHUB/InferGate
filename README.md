@@ -40,10 +40,13 @@ webhooks, billing.
 
 ## API surface
 
-`POST /v1/chat/completions` (JSON + `stream:true` SSE) · `GET /v1/models` ·
-`POST /v1/keys` · key rotation/revocation · `GET /v1/usage[/daily]` ·
-`GET /v1/requests` · `GET /v1/billing/summary` · `GET /v1/routing/health` ·
-webhook CRUD · `POST /v1/scheduler/placement` · `/healthz` `/readyz` `/metrics`.
+`POST /v1/chat/completions` (JSON + `stream:true` SSE, idempotent replay,
+`cache_ttl` + single-flight) · `POST /v1/embeddings` · `GET /v1/models[/id]` ·
+key mint/list/rotate/revoke (+expiry, no-escalation) · `GET /v1/usage[/daily]`
+· `GET /v1/requests` · `GET /v1/billing/summary` · `POST /v1/org/plan` ·
+`GET /v1/routing/health` + rules CRUD · webhooks CRUD + deliveries ·
+`POST /v1/scheduler/placement` · `GET /v1/audit` · `/healthz` (drain-aware)
+`/readyz` `/metrics` (gated).
 
 ## Production path
 
