@@ -19,6 +19,20 @@ export default function ModelDetail({ params }: { params: Promise<{ id: string }
   const [ready, setReady] = useState(false);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
+  const [adminNote, setAdminNote] = useState("");
+
+  async function toggle(enabled: boolean): Promise<void> {
+    setAdminNote("");
+    const res = await fetch(`${GATEWAY_URL}/v1/models/${encodeURIComponent(id)}/${enabled ? "enable" : "disable"}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${getKey()}` },
+    });
+    if (!res.ok) {
+      setAdminNote("Toggle needs admin:write scope.");
+    } else {
+      setAdminNote(enabled ? "Model enabled." : "Model disabled.");
+    }
+  }
 
   useEffect(() => {
     if (getKey() !== "") {
@@ -79,6 +93,21 @@ export default function ModelDetail({ params }: { params: Promise<{ id: string }
               >
                 Playground
               </Link>
+              <div className="mt-3 flex gap-2">
+                <button
+                  className="rounded-xl border border-[#4a2323] px-3 py-1.5 text-xs font-semibold text-red-400"
+                  onClick={() => toggle(false)}
+                >
+                  Disable
+                </button>
+                <button
+                  className="rounded-xl border border-edge px-3 py-1.5 text-xs font-semibold"
+                  onClick={() => toggle(true)}
+                >
+                  Enable
+                </button>
+              </div>
+              {adminNote !== "" && <p className="mt-2 text-xs text-fog">{adminNote}</p>}
             </div>
           </div>
         </div>
