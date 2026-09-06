@@ -91,6 +91,59 @@ export class PgKeyStore implements KeyStore {
   }
 }
 
+export interface StoredRule {
+  id: string;
+  orgId: string | null;
+  modelAlias: string;
+  strategy: string;
+  weights: Record<string, number>;
+  priority: string[];
+  maxAttempts: number;
+}
+
+export class PgRuleStore {
+  constructor(private sql: Sql) {}
+
+  async list(orgId: string): Promise<StoredRule[]> {
+    const rows = await this.sql`
+      SELECT * FROM routing_rules WHERE org_id IS NULL OR org_id = ${orgId} ORDER BY priority DESC
+    `;
+    return rows.map((r) => ruleFromRow(r as Record<string, unknown>));
+  }
+
+  async create(rule: Omit<StoredRule, "id">): Promise<StoredRule> {
+    const rows = await this.sql`
+      INSERT INTO routing_rules (org_id, model_alias, strategy, config, priority)
+      VALUES (${rule.orgId}, ${rule.modelAlias}, ${rule.strategy}, ${JSON.stringify({ weights: rule.weights, priority: rule.priority, maxAttempts: rule.maxAttempts })}, 0)
+      RETURNING *
+    `;
+    return ruleFromRow(rows[0] as Record<string, unknown>);
+  }
+
+  async remove(orgId: string, id: string): Promise<boolean> {
+    if (!isUuid(id)) {
+      return false;
+    }
+    const rows = await this.sql`
+      DELETE FROM routing_rules WHERE id = ${id} AND org_id = ${orgId} RETURNING id
+    `;
+    return rows.length > 0;
+  }
+}
+
+function ruleFromRow(row: Record<string, unknown>): StoredRule {
+  const config = (row["config"] ?? {}) as { weights?: Record<string, number>; priority?: string[]; maxAttempts?: number };
+  return {
+    id: row["id"] as string,
+    orgId: row["org_id"] as string | null,
+    modelAlias: row["model_alias"] as string,
+    strategy: row["strategy"] as string,
+    weights: config.weights ?? {},
+    priority: config.priority ?? [],
+    maxAttempts: config.maxAttempts ?? 3,
+  };
+}
+
 function usageFromRow(row: Record<string, unknown>): UsageRecord {
   return {
     id: row["id"] as string,

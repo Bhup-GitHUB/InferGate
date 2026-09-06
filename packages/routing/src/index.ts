@@ -6,6 +6,22 @@ export * from "./types";
 export { CircuitBreaker } from "./breaker";
 export { HealthTracker } from "./health";
 
+export function pickRule(rules: RoutingRule[], fallback: RoutingStrategy, orgId: string, ...aliases: string[]): RoutingRule {
+  for (const alias of aliases) {
+    const org = rules.find((r) => r.orgId === orgId && r.modelAlias === alias);
+    if (org) {
+      return org;
+    }
+  }
+  for (const alias of aliases) {
+    const global = rules.find((r) => r.orgId === null && r.modelAlias === alias);
+    if (global) {
+      return global;
+    }
+  }
+  return { ...DEFAULT_RULE, modelAlias: aliases[aliases.length - 1] ?? "auto", strategy: fallback };
+}
+
 export interface EngineOptions {
   failureThreshold: number;
   cooldownMs: number;
@@ -38,6 +54,10 @@ export class RoutingEngine {
     this.fallback = strategy;
   }
 
+  getDefaultStrategy(): RoutingStrategy {
+    return this.fallback;
+  }
+
   private breaker(id: string): CircuitBreaker {
     let b = this.breakers.get(id);
     if (!b) {
@@ -56,19 +76,7 @@ export class RoutingEngine {
   }
 
   ruleFor(orgId: string, ...aliases: string[]): RoutingRule {
-    for (const alias of aliases) {
-      const org = this.rules.find((r) => r.orgId === orgId && r.modelAlias === alias);
-      if (org) {
-        return org;
-      }
-    }
-    for (const alias of aliases) {
-      const global = this.rules.find((r) => r.orgId === null && r.modelAlias === alias);
-      if (global) {
-        return global;
-      }
-    }
-    return { ...DEFAULT_RULE, modelAlias: aliases[aliases.length - 1] ?? "auto", strategy: this.fallback };
+    return pickRule(this.rules, this.fallback, orgId, ...aliases);
   }
 
   candidatesFor(alias: string): string[] {
