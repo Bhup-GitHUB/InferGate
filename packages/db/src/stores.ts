@@ -74,6 +74,11 @@ export class PgKeyStore implements KeyStore {
     return keyFromRow(rows[0] as Record<string, unknown>);
   }
 
+  async listByOrg(orgId: string): Promise<StoredKey[]> {
+    const rows = await this.sql`SELECT * FROM api_keys WHERE org_id = ${orgId} ORDER BY created_at DESC LIMIT 100`;
+    return rows.map((r) => keyFromRow(r as Record<string, unknown>));
+  }
+
   async save(key: StoredKey): Promise<void> {
     await this.sql`
       INSERT INTO api_keys (id, org_id, prefix, salt, hashed_secret, pepper_version, scopes, expires_at, rotated_from_id, revoked_at, created_at)
